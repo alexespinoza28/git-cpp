@@ -1,0 +1,77 @@
+# C++ build artifacts
+*.o
+*.lo
+*.slo
+*.so
+*.a
+*.dll
+*.exe
+*.out
+*.app
+*.i
+*.s
+*.su
+*.prof
+*.gcda
+*.gcno
+*.gcov
+
+# Build directories
+build/
+bin/
+obj/
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+
+# Visual Studio
+*.sln
+*.suo
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.aps
+*.ncb
+*.opensdf
+*.sdf
+*.pdb
+*.ipch/
+x64/
+Win32/
+Debug/
+Release/
+.vs/
+
+# VS Code
+.vscode/
+
+# CLion
+.idea/
+cmake-build-*/
+
+# Qt Creator
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+
+# Mac OS X
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+# KDE KDevelop specific
+*.kdev4
+*.kdev4.pro
+*.kdev4.pro.user
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
