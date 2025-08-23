@@ -22,8 +22,7 @@ void rmBranch(const std::string& name);
 void reset(const std::string& commitId);                     // switchBranch(commitId, "commit")
 void merge(const std::string& otherBranch);
 
-// Utilities mirrored from your Java class (used by other commands)
-// You’ll implement these as you flesh out the system.
+
 bool isStageEmpty();
 bool isFirstBranchCom();
 std::string getHeadPath();

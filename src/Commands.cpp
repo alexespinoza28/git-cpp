@@ -1,5 +1,5 @@
-#include "gitlet/Commands.hpp"
-#include "gitlet/Repository.hpp"
+#include "Commands.hpp"
+#include "Repository.hpp"
 #include <filesystem>
 #include <iostream>
 
@@ -7,19 +7,18 @@ namespace fs = std::filesystem;
 
 namespace gitlet::commands {
 
-// ---- helper (local) ----
+//helper
 static void not_impl(const char* name) {
     std::cout << "[TODO] Command not implemented yet: " << name << "\n";
     std::exit(0);
 }
 
-// ---- implemented now ----
+
 void init() {
-    // mirrors: new Repository();
     Repository repo; // constructor performs the init and exits if it already exists
 }
 
-// ---- stubs (compile-safe) ----
+/
 void add(const std::string& fileToAdd) { not_impl("add " + fileToAdd); }
 void commit(const std::string& message) { not_impl("commit \"" + message + "\""); }
 void remove(const std::string& fileToRemove) { not_impl("rm " + fileToRemove); }
@@ -34,7 +33,7 @@ void rmBranch(const std::string& name) { not_impl("rm-branch " + name); }
 void reset(const std::string& commitId) { (void)commitId; not_impl("reset"); }
 void merge(const std::string& otherBranch) { not_impl("merge " + otherBranch); }
 
-// Utility placeholders—wire these up as you implement the internals.
+// Utility placeholders
 bool isStageEmpty() { return true; }
 bool isFirstBranchCom() { return false; }
 std::string getHeadPath() { return ""; }

@@ -34,7 +34,7 @@ Repository::Repository() {
     ensure_dir(HEADS);
     ensure_dir(BRANCHES);
 
-    // Seed files (mirror your Java defaults)
+
     write_text(MAIN_COMMIT, "");          // ""
     write_text(BLOB_COUNT, "0");          // "0"
     write_text(FIRST_BRANCH_COM, "false");// "false"

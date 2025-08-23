@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
 
     std::string firstArg = argv[1];
 
-    // Collect args after the command to mirror your Java code
+    
     std::vector<std::string> args;
     args.reserve(argc - 2);
     for (int i = 2; i < argc; ++i) args.emplace_back(argv[i]);

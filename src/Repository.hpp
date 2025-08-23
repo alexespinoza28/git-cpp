@@ -10,7 +10,6 @@ namespace fs = std::filesystem;
 
 class Repository {
 public:
-    // Mirrors your Java static finals
     inline static const fs::path CWD            = fs::current_path();
     inline static const fs::path GITLET_DIR     = CWD / ".gitlet";
     inline static const fs::path COMMITS        = GITLET_DIR / "commits";

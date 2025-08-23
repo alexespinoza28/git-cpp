@@ -18,7 +18,6 @@ std::string sha1(const std::string& s);
 
 /// Variadic SHA-1 of concatenation of byte arrays and/or strings.
 /// Accepts any mix of: std::vector<unsigned char>, std::string, const char*
-/// (mirrors Utils.sha1(Object... vals) behavior).
 template <typename... Args>
 std::string sha1_concat(const Args&... parts);
 
@@ -44,10 +43,7 @@ std::vector<std::string> plainFilenamesIn(const std::filesystem::path& dir);
 std::filesystem::path join(const std::string& first, std::initializer_list<std::string> others);
 std::filesystem::path join(const std::filesystem::path& first, std::initializer_list<std::string> others);
 
-/// ---- "Serialization" Utilities (C++ style) ----
-/// We don't have Java's ObjectOutputStream. Instead:
-///  - For writeObject: T must provide `std::vector<unsigned char> to_bytes() const`.
-///  - For readObject:  T must provide `static T from_bytes(const std::vector<unsigned char>&)`.
+/// serialize
 template <typename T>
 std::vector<unsigned char> serialize(const T& obj);
 
@@ -57,7 +53,7 @@ T readObject(const std::filesystem::path& file);
 template <typename T>
 void writeObject(const std::filesystem::path& file, const T& obj);
 
-/// message() — printf-ish convenience (kept minimal).
+
 void message(const std::string& s);
 
 /// error() — build a GitletException with a message.
@@ -89,7 +85,7 @@ std::false_type has_to_bytes_impl(...);
 template <typename T>
 using has_to_bytes = decltype(has_to_bytes_impl<T>(0));
 
-} // namespace detail
+} 
 
 template <typename... Args>
 std::string sha1_concat(const Args&... parts) {
@@ -121,8 +117,6 @@ void writeObject(const std::filesystem::path& file, const T& obj) {
 template <typename... Args>
 void writeContents(const std::filesystem::path& file, const Args&... parts) {
     // Implemented in Utils.cpp via helper that takes a vector of byte chunks.
-    // We forward to the non-template sink there to keep includes light.
-    // Build an array of byte vectors here:
     std::vector<std::vector<unsigned char>> chunks;
     chunks.reserve(sizeof...(Args));
 
