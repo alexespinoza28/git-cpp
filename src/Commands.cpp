@@ -18,20 +18,19 @@ void init() {
     Repository repo; // constructor performs the init and exits if it already exists
 }
 
-/
-void add(const std::string& fileToAdd) { not_impl("add " + fileToAdd); }
-void commit(const std::string& message) { not_impl("commit \"" + message + "\""); }
-void remove(const std::string& fileToRemove) { not_impl("rm " + fileToRemove); }
+void add(const std::string& fileToAdd) { not_impl(("add " + fileToAdd).c_str()); }
+void commit(const std::string& message) { not_impl(("commit \"" + message + "\"").c_str()); }
+void remove(const std::string& fileToRemove) { not_impl(("rm " + fileToRemove).c_str()); }
 void log() { not_impl("log"); }
 void globalLog() { not_impl("global-log"); }
-void find(const std::string& message) { not_impl("find \"" + message + "\""); }
+void find(const std::string& message) { not_impl(("find \"" + message + "\"").c_str()); }
 void status() { not_impl("status"); }
 void restore(const std::vector<std::string>& argv) { (void)argv; not_impl("restore"); }
-void branch(const std::string& name) { not_impl("branch " + name); }
+void branch(const std::string& name) { not_impl(("branch " + name).c_str()); }
 void switchBranch(const std::string& name, const std::string& mode) { (void)mode; not_impl(("switch " + name).c_str()); }
-void rmBranch(const std::string& name) { not_impl("rm-branch " + name); }
+void rmBranch(const std::string& name) { not_impl(("rm-branch " + name).c_str()); }
 void reset(const std::string& commitId) { (void)commitId; not_impl("reset"); }
-void merge(const std::string& otherBranch) { not_impl("merge " + otherBranch); }
+void merge(const std::string& otherBranch) { not_impl(("merge " + otherBranch).c_str()); }
 
 // Utility placeholders
 bool isStageEmpty() { return true; }
