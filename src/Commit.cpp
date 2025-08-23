@@ -1,10 +1,11 @@
 #include "Commit.hpp"
-#include "sha1_hex.hpp"
+#include "Utils.hpp"
 
 #include <sstream>
 #include <iomanip>
 #include <cstdlib>
 #include <ctime>
+#include <string>
 
 static std::string getenv_or(const char* key, const char* fallback) {
     if (const char* v = std::getenv(key)) return std::string(v);
@@ -44,10 +45,7 @@ Commit::Commit(const std::string& treeHash,
     contents << message << "\n";
 
     const std::string body = contents.str();
-    std::ostringstream with_header;
-    with_header << "commit " << body.size() << '\0' << body;
-
-    commitHash = sha1_hex(with_header.str());
+    commitHash = gitlet::sha1_concat("commit ", std::to_string(body.size()), std::string(1, '\0'), body);
 }
 
 const std::string& Commit::getTreeHash() const { return treeHash; }
