@@ -15,6 +15,7 @@
 *.gcda
 *.gcno
 *.gcov
+Blob
 
 # Build directories
 build/
