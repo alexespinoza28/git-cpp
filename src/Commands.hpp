@@ -4,10 +4,10 @@
 
 namespace gitlet::commands {
 
-// === Implemented ===
+
 void init();  // uses Repository to create .gitlet
 
-// === Stubs you can fill in next ===
+
 void add(const std::string& fileToAdd);
 void commit(const std::string& message);
 void remove(const std::string& fileToRemove);
