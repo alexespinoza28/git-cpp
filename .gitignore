@@ -76,3 +76,6 @@ cmake-build-*/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Gitlet repository data
+/.gitlet/
