@@ -67,7 +67,13 @@ void add(const std::string& fileToAdd) {
 
 void commit(const std::string& message) {
     std::string staged_content = gitlet::readContentsAsString(Repository::FILE_MAP);
-    if (staged_content.empty() || staged_content == "{}") {
+    std::string removed_content = gitlet::readContentsAsString(Repository::REMOVE_SET);
+    
+    // Check if there are any changes to commit (staged files or removed files)
+    bool has_staged_files = !(staged_content.empty() || staged_content == "{}");
+    bool has_removed_files = !(removed_content.empty() || removed_content == "[]");
+    
+    if (!has_staged_files && !has_removed_files) {
         gitlet::message("Nothing to commit, working tree clean");
         return;
     }
@@ -95,8 +101,9 @@ void commit(const std::string& message) {
     // Update branch head
     gitlet::writeContents(head_path, new_commit.getCommitHash());
 
-    // Clear staging area
+    // Clear staging area and remove set
     gitlet::writeContents(Repository::FILE_MAP, "{}");
+    gitlet::writeContents(Repository::REMOVE_SET, "[]");
 }
 
 void remove(const std::string& fileToRemove) {
