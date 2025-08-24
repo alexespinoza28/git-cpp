@@ -100,8 +100,81 @@ void commit(const std::string& message) {
 }
 
 void remove(const std::string& fileToRemove) {
-    std::string msg = "rm " + fileToRemove;
-    not_impl(msg.c_str());
+    // Read the staging index
+    std::map<std::string, std::string> staged_files;
+    std::string index_content = gitlet::readContentsAsString(Repository::FILE_MAP);
+    if (index_content != "{}" && !index_content.empty()) {
+        std::istringstream stream(index_content);
+        std::string line;
+        while (std::getline(stream, line)) {
+            size_t colon_pos = line.find(':');
+            if (colon_pos != std::string::npos) {
+                staged_files[line.substr(0, colon_pos)] = line.substr(colon_pos + 1);
+            }
+        }
+    }
+
+    bool removed = false;
+    if (staged_files.count(fileToRemove)) {
+        staged_files.erase(fileToRemove);
+        removed = true;
+    }
+
+    // If the file was staged, write the updated index back to disk
+    if (removed) {
+        std::ostringstream new_index_content;
+        for (const auto& [file, hash] : staged_files) {
+            new_index_content << file << ":" << hash << "\n";
+        }
+        gitlet::writeContents(Repository::FILE_MAP, new_index_content.str());
+        return;
+    }
+
+    // Check if the file is in the current commit
+    std::string current_branch = gitlet::readContentsAsString(Repository::CURRENT_BRANCH);
+    fs::path head_path = Repository::HEADS / current_branch;
+    if (fs::exists(head_path)) {
+        std::string head_commit_hash = gitlet::readContentsAsString(head_path);
+        fs::path commit_path = Repository::COMMITS / head_commit_hash;
+        if (fs::exists(commit_path)) {
+            std::string commit_contents = gitlet::readContentsAsString(commit_path);
+            size_t nul_pos = commit_contents.find('\0');
+            if (nul_pos != std::string::npos) {
+                std::string body = commit_contents.substr(nul_pos + 1);
+                std::istringstream body_stream(body);
+                std::string line;
+                std::string tree_hash;
+                while (std::getline(body_stream, line)) {
+                    if (line.rfind("tree ", 0) == 0) {
+                        tree_hash = line.substr(5);
+                        break;
+                    }
+                }
+
+                if (!tree_hash.empty()) {
+                    std::string tree_contents = gitlet::readContentsAsString(Repository::BLOBS / tree_hash);
+                    if (tree_contents.find(fileToRemove) != std::string::npos) {
+                        // Stage for removal
+                        std::string removed_content = gitlet::readContentsAsString(Repository::REMOVE_SET);
+                        if (removed_content == "[]") {
+                            removed_content = "";
+                        }
+                        if (removed_content.find(fileToRemove) == std::string::npos) {
+                            removed_content += fileToRemove + "\n";
+                            gitlet::writeContents(Repository::REMOVE_SET, removed_content);
+                        }
+                        // Delete the file
+                        fs::remove(fileToRemove);
+                        removed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if (!removed) {
+        gitlet::message("No reason to remove the file.");
+    }
 }
 
 void log() {
@@ -222,14 +295,88 @@ void restore(const std::vector<std::string>& argv) {
 }
 
 void branch(const std::string& name) {
-    std::string msg = "branch " + name;
-    not_impl(msg.c_str());
+    fs::path branch_path = Repository::HEADS / name;
+    if (fs::exists(branch_path)) {
+        gitlet::message("A branch with that name already exists.");
+        return;
+    }
+
+    std::string current_branch = gitlet::readContentsAsString(Repository::CURRENT_BRANCH);
+    fs::path head_path = Repository::HEADS / current_branch;
+    std::string head_commit_hash = gitlet::readContentsAsString(head_path);
+
+    gitlet::writeContents(branch_path, head_commit_hash);
 }
 
 void switchBranch(const std::string& name, const std::string& mode) {
-    (void)mode; // Unused parameter
-    std::string msg = "switch " + name;
-    not_impl(msg.c_str());
+    fs::path branch_path = Repository::HEADS / name;
+    if (!fs::exists(branch_path)) {
+        gitlet::message("A branch with that name does not exist.");
+        return;
+    }
+
+    // Get the commit hash of the branch to switch to
+    std::string branch_commit_hash = gitlet::readContentsAsString(branch_path);
+
+    // Get the tree hash from the commit
+    fs::path commit_path = Repository::COMMITS / branch_commit_hash;
+    std::string commit_contents = gitlet::readContentsAsString(commit_path);
+    size_t nul_pos = commit_contents.find('\0');
+    std::string body = commit_contents.substr(nul_pos + 1);
+    std::istringstream body_stream(body);
+    std::string line;
+    std::string tree_hash;
+    while (std::getline(body_stream, line)) {
+        if (line.rfind("tree ", 0) == 0) {
+            tree_hash = line.substr(5);
+            break;
+        }
+    }
+
+    // Get the tree of the current branch
+    std::string current_branch = gitlet::readContentsAsString(Repository::CURRENT_BRANCH);
+    fs::path head_path = Repository::HEADS / current_branch;
+    std::string head_commit_hash = gitlet::readContentsAsString(head_path);
+    fs::path current_commit_path = Repository::COMMITS / head_commit_hash;
+    std::string current_commit_contents = gitlet::readContentsAsString(current_commit_path);
+    size_t current_nul_pos = current_commit_contents.find('\0');
+    std::string current_body = current_commit_contents.substr(current_nul_pos + 1);
+    std::istringstream current_body_stream(current_body);
+    std::string current_line;
+    std::string current_tree_hash;
+    while (std::getline(current_body_stream, current_line)) {
+        if (current_line.rfind("tree ", 0) == 0) {
+            current_tree_hash = current_line.substr(5);
+            break;
+        }
+    }
+
+    // Delete files that are tracked in the current branch
+    std::string current_tree_contents = gitlet::readContentsAsString(Repository::BLOBS / current_tree_hash);
+    std::istringstream current_tree_stream(current_tree_contents);
+    while (std::getline(current_tree_stream, current_line)) {
+        size_t colon_pos = current_line.find(':');
+        if (colon_pos != std::string::npos) {
+            std::string file_path = current_line.substr(0, colon_pos);
+            fs::remove(file_path);
+        }
+    }
+
+    // Checkout the files from the new branch's tree
+    std::string tree_contents = gitlet::readContentsAsString(Repository::BLOBS / tree_hash);
+    std::istringstream tree_stream(tree_contents);
+    while (std::getline(tree_stream, line)) {
+        size_t colon_pos = line.find(':');
+        if (colon_pos != std::string::npos) {
+            std::string file_path = line.substr(0, colon_pos);
+            std::string blob_hash = line.substr(colon_pos + 1);
+            std::string blob_contents = gitlet::readContentsAsString(Repository::BLOBS / blob_hash);
+            gitlet::writeContents(file_path, blob_contents);
+        }
+    }
+
+    // Update the current branch
+    gitlet::writeContents(Repository::CURRENT_BRANCH, name);
 }
 
 void rmBranch(const std::string& name) {
