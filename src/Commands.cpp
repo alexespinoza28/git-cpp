@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <map>
 
 namespace fs = std::filesystem;
 
@@ -24,8 +25,43 @@ void init() {
 }
 
 void add(const std::string& fileToAdd) {
-    std::string msg = "add " + fileToAdd;
-    not_impl(msg.c_str());
+    fs::path file_path(fileToAdd);
+    if (!fs::exists(file_path)) {
+        // Following git's behavior of printing to stderr and exiting with 1
+        std::cerr << "Error: File does not exist: " << fileToAdd << std::endl;
+        std::exit(1);
+    }
+
+    // Read file and create blob
+    auto content_bytes = gitlet::readContents(file_path);
+    std::string blob_hash = gitlet::sha1(content_bytes);
+
+    // Read the staging index
+    std::map<std::string, std::string> staged_files;
+    std::string index_content = gitlet::readContentsAsString(Repository::FILE_MAP);
+    if (index_content != "{}" && !index_content.empty()) {
+        std::istringstream stream(index_content);
+        std::string line;
+        while (std::getline(stream, line)) {
+            size_t colon_pos = line.find(':');
+            if (colon_pos != std::string::npos) {
+                staged_files[line.substr(0, colon_pos)] = line.substr(colon_pos + 1);
+            }
+        }
+    }
+
+    // Add or update the file in the staging index
+    staged_files[fileToAdd] = blob_hash;
+
+    // Write the blob file to the blob store
+    gitlet::writeContents(Repository::BLOBS / blob_hash, content_bytes);
+
+    // Write the staging index back to disk
+    std::ostringstream new_index_content;
+    for (const auto& [file, hash] : staged_files) {
+        new_index_content << file << ":" << hash << "\n";
+    }
+    gitlet::writeContents(Repository::FILE_MAP, new_index_content.str());
 }
 
 void commit(const std::string& message) {

@@ -8,7 +8,7 @@
 
 namespace gitlet {
 
-// --- SHA1 ---
+// sha1
 
 std::string sha1(const std::vector<unsigned char>& v) {
     unsigned char out[CC_SHA1_DIGEST_LENGTH];
@@ -95,7 +95,7 @@ std::vector<std::string> plainFilenamesIn(const std::filesystem::path& dir) {
     return filenames;
 }
 
-// --- Path ---
+// path
 
 std::filesystem::path join(const std::string& first, std::initializer_list<std::string> others) {
     std::filesystem::path p(first);
@@ -113,7 +113,7 @@ std::filesystem::path join(const std::filesystem::path& first, std::initializer_
     return p;
 }
 
-// --- Messaging ---
+// message
 
 void message(const std::string& s) {
     std::cout << s << std::endl;

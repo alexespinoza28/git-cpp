@@ -41,8 +41,6 @@ Makefile
 *.sdf
 *.pdb
 *.ipch/
-x64/
-Win32/
 Debug/
 Release/
 .vs/
@@ -64,18 +62,6 @@ cmake-build-*/
 .DS_Store
 .AppleDouble
 .LSOverride
-
-# Linux
-*~
-# KDE KDevelop specific
-*.kdev4
-*.kdev4.pro
-*.kdev4.pro.user
-
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
 
 # Gitlet repository data
 /.gitlet/
