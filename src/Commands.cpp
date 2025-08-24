@@ -1,6 +1,7 @@
 #include "Commands.hpp"
 #include "Repository.hpp"
 #include "Utils.hpp"
+#include "Commit.hpp"
 #include <filesystem>
 #include <iostream>
 #include <sstream>
@@ -65,8 +66,37 @@ void add(const std::string& fileToAdd) {
 }
 
 void commit(const std::string& message) {
-    std::string msg = "commit \"" + message + "\"";
-    not_impl(msg.c_str());
+    std::string staged_content = gitlet::readContentsAsString(Repository::FILE_MAP);
+    if (staged_content.empty() || staged_content == "{}") {
+        gitlet::message("Nothing to commit, working tree clean");
+        return;
+    }
+
+    // Create tree hash from the staging index
+    std::string treeHash = gitlet::sha1(staged_content);
+
+    // Get parent commit hash
+    std::string current_branch = gitlet::readContentsAsString(Repository::CURRENT_BRANCH);
+    fs::path head_path = Repository::HEADS / current_branch;
+    std::string parent_hash;
+    if (fs::exists(head_path)) {
+        parent_hash = gitlet::readContentsAsString(head_path);
+    }
+    
+    std::vector<std::string> parent_hashes;
+    if (!parent_hash.empty()) {
+        parent_hashes.push_back(parent_hash);
+    }
+
+    // Create and save commit object
+    Commit new_commit(treeHash, parent_hashes, message);
+    gitlet::writeContents(Repository::COMMITS / new_commit.getCommitHash(), new_commit.getCommitContents());
+
+    // Update branch head
+    gitlet::writeContents(head_path, new_commit.getCommitHash());
+
+    // Clear staging area
+    gitlet::writeContents(Repository::FILE_MAP, "{}");
 }
 
 void remove(const std::string& fileToRemove) {

@@ -47,10 +47,14 @@ Commit::Commit(const std::string& treeHash,
     const std::string body = contents.str();
 
     // The commit object format is "commit " + size + NUL + content
-    std::ostringstream commit_content;
-    commit_content << "commit " << body.size() << '\0' << body;
-    commitHash = gitlet::sha1(commit_content.str());
+    std::ostringstream commit_content_stream;
+    commit_content_stream << "commit " << body.size() << '\0' << body;
+    commitContents = commit_content_stream.str();
+
+    commitHash = gitlet::sha1(commitContents);
 }
+
+const std::string& Commit::getCommitContents() const { return commitContents; }
 
 const std::string& Commit::getTreeHash() const { return treeHash; }
 const std::vector<std::string>& Commit::getParentHashes() const { return parentHashes; }

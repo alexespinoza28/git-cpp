@@ -16,6 +16,7 @@ public:
     const std::string& getMessage() const;
     const std::string& getCommitHash() const;
     std::time_t getTimestamp() const;
+    const std::string& getCommitContents() const;
 
 private:
     std::string treeHash;
@@ -24,5 +25,6 @@ private:
     std::string committer;
     std::string message;
     std::string commitHash;
+    std::string commitContents;
     std::time_t timestamp;
 };
