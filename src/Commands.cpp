@@ -9,6 +9,7 @@
 #include <vector>
 #include <algorithm>
 #include <map>
+#include <set>
 
 namespace fs = std::filesystem;
 
@@ -78,8 +79,9 @@ void commit(const std::string& message) {
         return;
     }
 
-    // Create tree hash from the staging index
+    // Create tree hash from the staging index and save the tree
     std::string treeHash = gitlet::sha1(staged_content);
+    gitlet::writeContents(Repository::BLOBS / treeHash, staged_content);
 
     // Get parent commit hash
     std::string current_branch = gitlet::readContentsAsString(Repository::CURRENT_BRANCH);
@@ -290,9 +292,121 @@ void status() {
     std::cout << std::endl;
 
     std::cout << "=== Modifications Not Staged For Commit ===" << std::endl;
+    
+    // Get current commit's tree to compare against
+    std::map<std::string, std::string> current_commit_files;
+    fs::path head_path = Repository::HEADS / current_branch;
+    if (fs::exists(head_path)) {
+        std::string head_commit_hash = gitlet::readContentsAsString(head_path);
+        fs::path commit_path = Repository::COMMITS / head_commit_hash;
+        if (fs::exists(commit_path)) {
+            std::string commit_contents = gitlet::readContentsAsString(commit_path);
+            size_t nul_pos = commit_contents.find('\0');
+            if (nul_pos != std::string::npos) {
+                std::string body = commit_contents.substr(nul_pos + 1);
+                std::istringstream body_stream(body);
+                std::string line;
+                std::string tree_hash;
+                while (std::getline(body_stream, line)) {
+                    if (line.rfind("tree ", 0) == 0) {
+                        tree_hash = line.substr(5);
+                        break;
+                    }
+                }
+                
+                if (!tree_hash.empty() && fs::exists(Repository::BLOBS / tree_hash)) {
+                    std::string tree_contents = gitlet::readContentsAsString(Repository::BLOBS / tree_hash);
+                    std::istringstream tree_stream(tree_contents);
+                    while (std::getline(tree_stream, line)) {
+                        size_t colon_pos = line.find(':');
+                        if (colon_pos != std::string::npos) {
+                            current_commit_files[line.substr(0, colon_pos)] = line.substr(colon_pos + 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Get staged files
+    std::map<std::string, std::string> staged_files;
+    if (staged_content != "{}") {
+        std::istringstream staged_stream(staged_content);
+        std::string line;
+        while (std::getline(staged_stream, line)) {
+            size_t colon_pos = line.find(':');
+            if (colon_pos != std::string::npos) {
+                staged_files[line.substr(0, colon_pos)] = line.substr(colon_pos + 1);
+            }
+        }
+    }
+    
+    // Get removed files
+    std::set<std::string> removed_files;
+    if (removed_content != "[]") {
+        std::istringstream removed_stream(removed_content);
+        std::string line;
+        while (std::getline(removed_stream, line)) {
+            removed_files.insert(line);
+        }
+    }
+    
+    // Check for modifications and deletions
+    std::vector<std::string> modifications;
+    for (const auto& [file_path, blob_hash] : current_commit_files) {
+        if (staged_files.count(file_path) || removed_files.count(file_path)) {
+            // File is staged or staged for removal, skip checking working directory
+            continue;
+        }
+        
+        if (!fs::exists(file_path)) {
+            // File was deleted
+            modifications.push_back(file_path + " (deleted)");
+        } else {
+            // Check if file was modified
+            auto content_bytes = gitlet::readContents(file_path);
+            std::string current_hash = gitlet::sha1(content_bytes);
+            if (current_hash != blob_hash) {
+                modifications.push_back(file_path + " (modified)");
+            }
+        }
+    }
+    
+    std::sort(modifications.begin(), modifications.end());
+    for (const auto& mod : modifications) {
+        std::cout << mod << std::endl;
+    }
     std::cout << std::endl;
 
     std::cout << "=== Untracked Files ===" << std::endl;
+    
+    // Find untracked files (files in working directory not in commit or staging)
+    std::vector<std::string> untracked_files;
+    std::function<void(const fs::path&)> scan_directory = [&](const fs::path& dir) {
+        if (!fs::exists(dir) || !fs::is_directory(dir)) return;
+        
+        for (const auto& entry : fs::directory_iterator(dir)) {
+            std::string filename = entry.path().filename().string();
+            if (!filename.empty() && filename[0] == '.') continue; // Skip hidden files
+            
+            if (entry.is_directory()) {
+                scan_directory(entry.path());
+            } else if (entry.is_regular_file()) {
+                std::string relative_path = fs::relative(entry.path(), fs::current_path()).string();
+                
+                // Skip if file is in current commit or staged
+                if (!current_commit_files.count(relative_path) && !staged_files.count(relative_path)) {
+                    untracked_files.push_back(relative_path);
+                }
+            }
+        }
+    };
+    
+    scan_directory(".");
+    std::sort(untracked_files.begin(), untracked_files.end());
+    for (const auto& file : untracked_files) {
+        std::cout << file << std::endl;
+    }
     std::cout << std::endl;
 }
 
@@ -302,6 +416,7 @@ void restore(const std::vector<std::string>& argv) {
 }
 
 void branch(const std::string& name) {
+    // Create new branch
     fs::path branch_path = Repository::HEADS / name;
     if (fs::exists(branch_path)) {
         gitlet::message("A branch with that name already exists.");
@@ -310,8 +425,14 @@ void branch(const std::string& name) {
 
     std::string current_branch = gitlet::readContentsAsString(Repository::CURRENT_BRANCH);
     fs::path head_path = Repository::HEADS / current_branch;
+    
+    // Check if current branch has any commits
+    if (!fs::exists(head_path)) {
+        gitlet::message("Cannot create branch before initial commit.");
+        return;
+    }
+    
     std::string head_commit_hash = gitlet::readContentsAsString(head_path);
-
     gitlet::writeContents(branch_path, head_commit_hash);
 }
 
@@ -319,6 +440,13 @@ void switchBranch(const std::string& name, const std::string& mode) {
     fs::path branch_path = Repository::HEADS / name;
     if (!fs::exists(branch_path)) {
         gitlet::message("A branch with that name does not exist.");
+        return;
+    }
+
+    // Check if we're already on this branch
+    std::string current_branch = gitlet::readContentsAsString(Repository::CURRENT_BRANCH);
+    if (current_branch == name) {
+        gitlet::message("Already on '" + name + "'");
         return;
     }
 
@@ -341,7 +469,6 @@ void switchBranch(const std::string& name, const std::string& mode) {
     }
 
     // Get the tree of the current branch
-    std::string current_branch = gitlet::readContentsAsString(Repository::CURRENT_BRANCH);
     fs::path head_path = Repository::HEADS / current_branch;
     std::string head_commit_hash = gitlet::readContentsAsString(head_path);
     fs::path current_commit_path = Repository::COMMITS / head_commit_hash;
@@ -378,6 +505,13 @@ void switchBranch(const std::string& name, const std::string& mode) {
             std::string file_path = line.substr(0, colon_pos);
             std::string blob_hash = line.substr(colon_pos + 1);
             std::string blob_contents = gitlet::readContentsAsString(Repository::BLOBS / blob_hash);
+            
+            // Create parent directories if they don't exist
+            fs::path parent_dir = fs::path(file_path).parent_path();
+            if (!parent_dir.empty() && !fs::exists(parent_dir)) {
+                fs::create_directories(parent_dir);
+            }
+            
             gitlet::writeContents(file_path, blob_contents);
         }
     }
