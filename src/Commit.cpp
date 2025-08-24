@@ -45,7 +45,11 @@ Commit::Commit(const std::string& treeHash,
     contents << message << "\n";
 
     const std::string body = contents.str();
-    commitHash = gitlet::sha1_concat("commit ", std::to_string(body.size()), std::string(1, '\0'), body);
+
+    // The commit object format is "commit " + size + NUL + content
+    std::ostringstream commit_content;
+    commit_content << "commit " << body.size() << '\0' << body;
+    commitHash = gitlet::sha1(commit_content.str());
 }
 
 const std::string& Commit::getTreeHash() const { return treeHash; }
