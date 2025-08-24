@@ -1,3 +1,3 @@
 # git-cpp
 
-mini implementation of git in cpp, school project rewritten from Java to C++
+I had originally completeted a project in school called "gitlet" which was to recrete the basic functionality of git verison control in java. However, just for fun, i decided to port my code over to C++.

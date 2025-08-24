@@ -105,7 +105,56 @@ void remove(const std::string& fileToRemove) {
 }
 
 void log() {
-    not_impl("log");
+    std::string current_branch = gitlet::readContentsAsString(Repository::CURRENT_BRANCH);
+    fs::path head_path = Repository::HEADS / current_branch;
+    if (!fs::exists(head_path)) {
+        return; // No commits yet
+    }
+    std::string current_commit_hash = gitlet::readContentsAsString(head_path);
+
+    while (!current_commit_hash.empty()) {
+        fs::path commit_path = Repository::COMMITS / current_commit_hash;
+        if (!fs::exists(commit_path)) {
+            std::cerr << "Error: Corrupt repository. Commit object not found: " << current_commit_hash << std::endl;
+            break;
+        }
+
+        std::string commit_contents = gitlet::readContentsAsString(commit_path);
+        size_t nul_pos = commit_contents.find('\0');
+        if (nul_pos == std::string::npos) {
+            std::cerr << "Error: Corrupt repository. Malformed commit object: " << current_commit_hash << std::endl;
+            break;
+        }
+
+        std::string body = commit_contents.substr(nul_pos + 1);
+        std::istringstream body_stream(body);
+        std::string line;
+        std::string parent_hash = "";
+
+        std::cout << "===" << std::endl;
+        std::cout << "commit " << current_commit_hash << std::endl;
+
+        // Parse the commit body header
+        while(std::getline(body_stream, line) && !line.empty()) {
+            if (line.rfind("parent ", 0) == 0) {
+                parent_hash = line.substr(7);
+            }
+            // A real log would parse the date and format it nicely
+            if (line.rfind("author ", 0) == 0) {
+                std::cout << line << std::endl;
+            }
+        }
+
+        // The rest of the stream is the message
+        std::string message;
+        std::string temp_line;
+        while(std::getline(body_stream, temp_line)) {
+            message += "    " + temp_line + "\n";
+        }
+        std::cout << "\n" << message << std::endl;
+
+        current_commit_hash = parent_hash;
+    }
 }
 
 void globalLog() {
