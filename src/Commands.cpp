@@ -298,8 +298,71 @@ void globalLog() {
 }
 
 void find(const std::string& message) {
-    std::string msg = "find \"" + message + "\"";
-    not_impl(msg.c_str());
+    // Get all commit files from the commits directory
+    std::vector<std::string> all_commits = gitlet::plainFilenamesIn(Repository::COMMITS);
+    
+    if (all_commits.empty()) {
+        std::cout << "Found no commit with that message." << std::endl;
+        return;
+    }
+    
+    // Filter out invalid commit files (SHA-1 hashes should be 40 characters)
+    std::vector<std::string> valid_commits;
+    for (const std::string& commit_hash : all_commits) {
+        if (commit_hash.length() == 40) {
+            valid_commits.push_back(commit_hash);
+        }
+    }
+    
+    std::vector<std::string> matching_commits;
+    
+    for (const std::string& commit_hash : valid_commits) {
+        fs::path commit_path = Repository::COMMITS / commit_hash;
+        
+        if (!fs::exists(commit_path)) {
+            continue;
+        }
+        
+        std::string commit_contents = gitlet::readContentsAsString(commit_path);
+        size_t nul_pos = commit_contents.find('\0');
+        if (nul_pos == std::string::npos) {
+            continue; // Skip malformed commits
+        }
+        
+        std::string body = commit_contents.substr(nul_pos + 1);
+        std::istringstream body_stream(body);
+        std::string line;
+        
+        // Skip header lines until we get to the message
+        while(std::getline(body_stream, line) && !line.empty()) {
+            // Skip header lines (tree, parent, author, etc.)
+        }
+        
+        // The rest of the stream is the message
+        std::string commit_message;
+        std::string temp_line;
+        while(std::getline(body_stream, temp_line)) {
+            if (!commit_message.empty()) {
+                commit_message += "\n";
+            }
+            commit_message += temp_line;
+        }
+        
+        // Check if the commit message matches
+        if (commit_message == message) {
+            matching_commits.push_back(commit_hash);
+        }
+    }
+    
+    if (matching_commits.empty()) {
+        std::cout << "Found no commit with that message." << std::endl;
+    } else {
+        // Sort for consistent output
+        std::sort(matching_commits.begin(), matching_commits.end());
+        for (const std::string& commit_hash : matching_commits) {
+            std::cout << commit_hash << std::endl;
+        }
+    }
 }
 
 void status() {
