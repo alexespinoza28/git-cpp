@@ -9,10 +9,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 file(GLOB_RECURSE SOURCES "src/*.cpp")
 
 # Add executable
-add_executable(gitlet ${SOURCES})
+add_executable(gitcpp ${SOURCES})
 
 # Add src to include path for headers
-target_include_directories(gitlet PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_include_directories(gitcpp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 # On Apple, CommonCrypto is part of the system libraries and should be found.
 # No special linking is usually required.

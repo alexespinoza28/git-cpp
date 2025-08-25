@@ -15,7 +15,6 @@
 *.gcda
 *.gcno
 *.gcov
-Blob
 
 # Build directories
 build/
@@ -29,42 +28,18 @@ cmake_install.cmake
 CTestTestfile.cmake
 Makefile
 
-# Visual Studio
-*.sln
-*.suo
-*.vcxproj
-*.vcxproj.filters
-*.vcxproj.user
-*.aps
-*.ncb
-*.opensdf
-*.sdf
-*.pdb
-*.ipch/
-Debug/
-Release/
-.vs/
-
-# VS Code
+# IDEs
 .vscode/
-
-# CLion
 .idea/
 cmake-build-*/
-
-# Qt Creator
-*.pro.user
-*.pro.user.*
-*.qbs.user
-*.qbs.user.*
 
 # Mac OS X
 .DS_Store
 .AppleDouble
 .LSOverride
 
-# Gitlet repository data
-/.gitlet/
+# Gitcpp repository data
+/.gitcpp/
 
-
+# Test workspace
 /test_workspace

@@ -51,7 +51,7 @@ Commit::Commit(const std::string& treeHash,
     commit_content_stream << "commit " << body.size() << '\0' << body;
     commitContents = commit_content_stream.str();
 
-    commitHash = gitlet::sha1(commitContents);
+    commitHash = gitcpp::sha1(commitContents);
 }
 
 const std::string& Commit::getCommitContents() const { return commitContents; }

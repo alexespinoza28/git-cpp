@@ -1,5 +1,5 @@
 #pragma once
-#include "GitletException.hpp"
+#include "GitcppException.hpp"
 
 #include <string>
 #include <vector>
@@ -7,7 +7,7 @@
 #include <initializer_list>
 #include <type_traits>
 
-namespace gitlet {
+namespace gitcpp {
 
 /// Length of a full SHA-1 hex UID.
 inline constexpr int UID_LENGTH = 40;
@@ -22,7 +22,7 @@ template <typename... Args>
 std::string sha1_concat(const Args&... parts);
 
 /// Delete file if it exists and is not a directory, but only if
-/// a sibling `.gitlet` directory exists (same policy as restrictedDelete).
+/// a sibling `.gitcpp` directory exists (same policy as restrictedDelete).
 bool restrictedDelete(const std::filesystem::path& file);
 
 /// Read entire file as bytes (throws on errors / if not a regular file).
@@ -56,8 +56,8 @@ void writeObject(const std::filesystem::path& file, const T& obj);
 
 void message(const std::string& s);
 
-/// error() — build a GitletException with a message.
-GitletException error(const std::string& s);
+/// error() — build a GitcppException with a message.
+GitcppException error(const std::string& s);
 
 // Template
 
@@ -144,4 +144,4 @@ void writeContents(const std::filesystem::path& file, const Args&... parts) {
     writeContents_impl_(file, chunks);
 }
 
-} // namespace gitlet
+} // namespace gitcpp

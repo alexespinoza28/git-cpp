@@ -2,10 +2,10 @@
 #include <string>
 #include <vector>
 
-namespace gitlet::commands {
+namespace gitcpp::commands {
 
 
-    void init();  // uses Repository to create .gitlet
+    void init();  // uses Repository to create .gitcpp
 
 
     void add(const std::string& fileToAdd);
@@ -28,4 +28,4 @@ namespace gitlet::commands {
     std::string getHeadPath();
     std::string getCurrentBranch();
 
-} // namespace gitlet::commands
+} // namespace gitcpp::commands

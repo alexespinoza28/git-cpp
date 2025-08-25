@@ -4,20 +4,20 @@
 #include <vector>
 #include <cstdlib>
 
-using gitlet::commands::init;
-using gitlet::commands::add;
-using gitlet::commands::commit;
-using gitlet::commands::remove;
-using gitlet::commands::log;
-using gitlet::commands::globalLog;
-using gitlet::commands::find;
-using gitlet::commands::status;
-using gitlet::commands::restore;
-using gitlet::commands::branch;
-using gitlet::commands::switchBranch;
-using gitlet::commands::rmBranch;
-using gitlet::commands::reset;
-using gitlet::commands::merge;
+using gitcpp::commands::init;
+using gitcpp::commands::add;
+using gitcpp::commands::commit;
+using gitcpp::commands::remove;
+using gitcpp::commands::log;
+using gitcpp::commands::globalLog;
+using gitcpp::commands::find;
+using gitcpp::commands::status;
+using gitcpp::commands::restore;
+using gitcpp::commands::branch;
+using gitcpp::commands::switchBranch;
+using gitcpp::commands::rmBranch;
+using gitcpp::commands::reset;
+using gitcpp::commands::merge;
 
 static void exitError(const std::string& msg) {
     std::cout << msg << "\n";
@@ -66,9 +66,6 @@ int main(int argc, char** argv) {
         status();
 
     } else if (firstArg == "restore") {
-        // Mirror your Java checks:
-        // if (args.length == 4 & !args[2].equals("--")) -> Incorrect operands.
-        // Here we just pass argv tail and let restore() validate.
         {
             std::vector<std::string> full;
             full.reserve(argc - 1);

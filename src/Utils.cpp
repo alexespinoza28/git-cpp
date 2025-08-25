@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <CommonCrypto/CommonDigest.h>
 
-namespace gitlet {
+namespace gitcpp {
 
 // sha1
 
@@ -38,7 +38,7 @@ std::string sha1(const std::string& s) {
 // --- File I/O ---
 
 bool restrictedDelete(const std::filesystem::path& file) {
-    if (!std::filesystem::exists(file.parent_path() / ".gitlet")) {
+    if (!std::filesystem::exists(file.parent_path() / ".gitcpp")) {
         return false;
     }
     if (std::filesystem::exists(file) && !std::filesystem::is_directory(file)) {
@@ -119,8 +119,8 @@ void message(const std::string& s) {
     std::cout << s << std::endl;
 }
 
-GitletException error(const std::string& s) {
-    return GitletException(s);
+GitcppException error(const std::string& s) {
+    return GitcppException(s);
 }
 
-} // namespace gitlet
+} // namespace gitcpp

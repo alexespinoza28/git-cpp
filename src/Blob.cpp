@@ -7,6 +7,6 @@ Blob::Blob(const std::string& fileName, const std::string& blobName)
     storedFile = std::filesystem::current_path() / fileName;
 
     // Read contents and hash them
-    fileContents = gitlet::readContents(storedFile);
-    fileHash = gitlet::sha1(fileContents);
+    fileContents = gitcpp::readContents(storedFile);
+    fileHash = gitcpp::sha1(fileContents);
 }
