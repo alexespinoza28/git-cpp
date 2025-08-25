@@ -1,6 +1,6 @@
 # gitcpp
 
-A C++ implementation of Git's core functionality, originally ported from a Java "gitcpp" project.
+A C++ implementation of Git's core functionality, originally ported from a Java "gitlet" project.
 
 ## Building
 

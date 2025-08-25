@@ -1,865 +1,635 @@
-#include "Commands.hpp"
-#include "Repository.hpp"
-#include "Utils.hpp"
-#include "Commit.hpp"
-#include <filesystem>
-#include <iostream>
-#include <sstream>
-#include <string>
-#include <vector>
-#include <algorithm>
-#include <map>
-#include <set>
-
-namespace fs = std::filesystem;
-
+    #include "Commands.hpp"
+    #include "Repository.hpp"
+    #include "Utils.hpp"
+    #include "Commit.hpp"
+    #include <filesystem>
+    #include <iostream>
+    #include <sstream>
+    #include <string>
+    #include <vector>
+    #include <algorithm>
+    #include <map>
+    #include <set>
+    
+    namespace fs = std::filesystem;
+    
 namespace gitcpp::commands {
-
-// Helper for commands that are not yet implemented.
-static void not_impl(const char* name) {
-    std::cout << "[TODO] Command not implemented yet: " << name << "\n";
-    std::exit(0);
-}
-
-void init() {
-    // The constructor handles all the logic for init.
-    Repository repo;
-}
-
-void add(const std::string& fileToAdd) {
-    fs::path file_path(fileToAdd);
-    if (!fs::exists(file_path)) {
-        // Following git's behavior of printing to stderr and exiting with 1
-        std::cerr << "Error: File does not exist: " << fileToAdd << std::endl;
-        std::exit(1);
+    
+    // Helper for commands that are not yet implemented.
+    static void not_impl(const char* name) {
+        std::cout << "[TODO] Command not implemented yet: " << name << "\n";
+        std::exit(0);
     }
-
-    // Read file and create blob
-    auto content_bytes = gitcpp::readContents(file_path);
-    std::string blob_hash = gitcpp::sha1(content_bytes);
-
-    // Read the staging index
-    std::map<std::string, std::string> staged_files;
-    std::string index_content = gitcpp::readContentsAsString(Repository::FILE_MAP);
-    if (index_content != "{}" && !index_content.empty()) {
-        std::istringstream stream(index_content);
-        std::string line;
-        while (std::getline(stream, line)) {
-            size_t colon_pos = line.find(':');
-            if (colon_pos != std::string::npos) {
-                staged_files[line.substr(0, colon_pos)] = line.substr(colon_pos + 1);
+    
+    void init() {
+        // The constructor handles all the logic for init.
+        Repository repo;
+    }
+    
+    void add(const std::string& fileToAdd) {
+        fs::path file_path(fileToAdd);
+        if (!fs::exists(file_path)) {
+            // Following git's behavior of printing to stderr and exiting with 1
+            std::cerr << "Error: File does not exist: " << fileToAdd << std::endl;
+            std::exit(1);
+        }
+    
+        // Read file and create blob
+        auto content_bytes = gitcpp::readContents(file_path);
+        std::string blob_hash = gitcpp::sha1(content_bytes);
+    
+        // Read the staging index
+        std::map<std::string, std::string> staged_files;
+        std::string index_content = gitcpp::readContentsAsString(Repository::FILE_MAP);
+        if (index_content != "{}" && !index_content.empty()) {
+            std::istringstream stream(index_content);
+            std::string line;
+            while (std::getline(stream, line)) {
+                size_t colon_pos = line.find(':');
+                if (colon_pos != std::string::npos) {
+                    staged_files[line.substr(0, colon_pos)] = line.substr(colon_pos + 1);
+                }
             }
         }
-    }
-
-    // Add or update the file in the staging index
-    staged_files[fileToAdd] = blob_hash;
-
-    // Write the blob file to the blob store
-    gitcpp::writeContents(Repository::BLOBS / blob_hash, content_bytes);
-
-    // Write the staging index back to disk
-    std::ostringstream new_index_content;
-    for (const auto& [file, hash] : staged_files) {
-        new_index_content << file << ":" << hash << "\n";
-    }
-    gitcpp::writeContents(Repository::FILE_MAP, new_index_content.str());
-}
-
-void commit(const std::string& message) {
-    std::string staged_content = gitcpp::readContentsAsString(Repository::FILE_MAP);
-    std::string removed_content = gitcpp::readContentsAsString(Repository::REMOVE_SET);
     
-    // Check if there are any changes to commit (staged files or removed files)
-    bool has_staged_files = !(staged_content.empty() || staged_content == "{}");
-    bool has_removed_files = !(removed_content.empty() || removed_content == "[]");
+        // Add or update the file in the staging index
+        staged_files[fileToAdd] = blob_hash;
     
-    if (!has_staged_files && !has_removed_files) {
-        gitcpp::message("Nothing to commit, working tree clean");
-        return;
-    }
-
-    // Create tree hash from the staging index and save the tree
-    std::string treeHash = gitcpp::sha1(staged_content);
-    gitcpp::writeContents(Repository::BLOBS / treeHash, staged_content);
-
-    // Get parent commit hash
-    std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
-    fs::path head_path = Repository::HEADS / current_branch;
-    std::string parent_hash;
-    if (fs::exists(head_path)) {
-        parent_hash = gitcpp::readContentsAsString(head_path);
-    }
+        // Write the blob file to the blob store
+        gitcpp::writeContents(Repository::BLOBS / blob_hash, content_bytes);
     
-    std::vector<std::string> parent_hashes;
-    if (!parent_hash.empty()) {
-        parent_hashes.push_back(parent_hash);
-    }
-
-    // Create and save commit object
-    Commit new_commit(treeHash, parent_hashes, message);
-    gitcpp::writeContents(Repository::COMMITS / new_commit.getCommitHash(), new_commit.getCommitContents());
-
-    // Update branch head
-    gitcpp::writeContents(head_path, new_commit.getCommitHash());
-
-    // Clear staging area and remove set
-    gitcpp::writeContents(Repository::FILE_MAP, "{}");
-    gitcpp::writeContents(Repository::REMOVE_SET, "[]");
-}
-
-void remove(const std::string& fileToRemove) {
-    // Read the staging index
-    std::map<std::string, std::string> staged_files;
-    std::string index_content = gitcpp::readContentsAsString(Repository::FILE_MAP);
-    if (index_content != "{}" && !index_content.empty()) {
-        std::istringstream stream(index_content);
-        std::string line;
-        while (std::getline(stream, line)) {
-            size_t colon_pos = line.find(':');
-            if (colon_pos != std::string::npos) {
-                staged_files[line.substr(0, colon_pos)] = line.substr(colon_pos + 1);
-            }
-        }
-    }
-
-    bool removed = false;
-    if (staged_files.count(fileToRemove)) {
-        staged_files.erase(fileToRemove);
-        removed = true;
-    }
-
-    // If the file was staged, write the updated index back to disk
-    if (removed) {
+        // Write the staging index back to disk
         std::ostringstream new_index_content;
         for (const auto& [file, hash] : staged_files) {
             new_index_content << file << ":" << hash << "\n";
         }
         gitcpp::writeContents(Repository::FILE_MAP, new_index_content.str());
-        return;
     }
-
-    // Check if the file is in the current commit
-    std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
-    fs::path head_path = Repository::HEADS / current_branch;
-    if (fs::exists(head_path)) {
-        std::string head_commit_hash = gitcpp::readContentsAsString(head_path);
-        fs::path commit_path = Repository::COMMITS / head_commit_hash;
-        if (fs::exists(commit_path)) {
-            std::string commit_contents = gitcpp::readContentsAsString(commit_path);
-            size_t nul_pos = commit_contents.find('\0');
-            if (nul_pos != std::string::npos) {
-                std::string body = commit_contents.substr(nul_pos + 1);
-                std::istringstream body_stream(body);
-                std::string line;
-                std::string tree_hash;
-                while (std::getline(body_stream, line)) {
-                    if (line.rfind("tree ", 0) == 0) {
-                        tree_hash = line.substr(5);
-                        break;
-                    }
+    
+    void commit(const std::string& message) {
+        std::string staged_content = gitcpp::readContentsAsString(Repository::FILE_MAP);
+        std::string removed_content = gitcpp::readContentsAsString(Repository::REMOVE_SET);
+        
+        // Check if there are any changes to commit (staged files or removed files)
+        bool has_staged_files = !(staged_content.empty() || staged_content == "{}");
+        bool has_removed_files = !(removed_content.empty() || removed_content == "[]");
+        
+        if (!has_staged_files && !has_removed_files) {
+            gitcpp::message("Nothing to commit, working tree clean");
+            return;
+        }
+    
+        // Create tree hash from the staging index and save the tree
+        std::string treeHash = gitcpp::sha1(staged_content);
+        gitcpp::writeContents(Repository::BLOBS / treeHash, staged_content);
+    
+        // Get parent commit hash
+        std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
+        fs::path head_path = Repository::HEADS / current_branch;
+        std::string parent_hash;
+        if (fs::exists(head_path)) {
+            parent_hash = gitcpp::readContentsAsString(head_path);
+        }
+        
+        std::vector<std::string> parent_hashes;
+        if (!parent_hash.empty()) {
+            parent_hashes.push_back(parent_hash);
+        }
+    
+        // Create and save commit object
+        Commit new_commit(treeHash, parent_hashes, message);
+        gitcpp::writeContents(Repository::COMMITS / new_commit.getCommitHash(), new_commit.getCommitContents());
+    
+        // Update branch head
+        gitcpp::writeContents(head_path, new_commit.getCommitHash());
+    
+        // Clear staging area and remove set
+        gitcpp::writeContents(Repository::FILE_MAP, "{}");
+        gitcpp::writeContents(Repository::REMOVE_SET, "[]");
+    }
+    
+    void remove(const std::string& fileToRemove) {
+        // Read the staging index
+        std::map<std::string, std::string> staged_files;
+        std::string index_content = gitcpp::readContentsAsString(Repository::FILE_MAP);
+        if (index_content != "{}" && !index_content.empty()) {
+            std::istringstream stream(index_content);
+            std::string line;
+            while (std::getline(stream, line)) {
+                size_t colon_pos = line.find(':');
+                if (colon_pos != std::string::npos) {
+                    staged_files[line.substr(0, colon_pos)] = line.substr(colon_pos + 1);
                 }
-
-                if (!tree_hash.empty()) {
-                    std::string tree_contents = gitcpp::readContentsAsString(Repository::BLOBS / tree_hash);
-                    if (tree_contents.find(fileToRemove) != std::string::npos) {
-                        // Stage for removal
-                        std::string removed_content = gitcpp::readContentsAsString(Repository::REMOVE_SET);
-                        if (removed_content == "[]") {
-                            removed_content = "";
+            }
+        }
+    
+        bool removed = false;
+        if (staged_files.count(fileToRemove)) {
+            staged_files.erase(fileToRemove);
+            removed = true;
+        }
+    
+        // If the file was staged, write the updated index back to disk
+        if (removed) {
+            std::ostringstream new_index_content;
+            for (const auto& [file, hash] : staged_files) {
+                new_index_content << file << ":" << hash << "\n";
+            }
+            gitcpp::writeContents(Repository::FILE_MAP, new_index_content.str());
+            return;
+        }
+    
+        // Check if the file is in the current commit
+        std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
+        fs::path head_path = Repository::HEADS / current_branch;
+        if (fs::exists(head_path)) {
+            std::string head_commit_hash = gitcpp::readContentsAsString(head_path);
+            fs::path commit_path = Repository::COMMITS / head_commit_hash;
+            if (fs::exists(commit_path)) {
+                std::string commit_contents = gitcpp::readContentsAsString(commit_path);
+                size_t nul_pos = commit_contents.find('\0');
+                if (nul_pos != std::string::npos) {
+                    std::string body = commit_contents.substr(nul_pos + 1);
+                    std::istringstream body_stream(body);
+                    std::string line;
+                    std::string tree_hash;
+                    while (std::getline(body_stream, line)) {
+                        if (line.rfind("tree ", 0) == 0) {
+                            tree_hash = line.substr(5);
+                            break;
                         }
-                        if (removed_content.find(fileToRemove) == std::string::npos) {
-                            removed_content += fileToRemove + "\n";
-                            gitcpp::writeContents(Repository::REMOVE_SET, removed_content);
-                        }
-                        // Delete the file
-                        fs::remove(fileToRemove);
-                        removed = true;
                     }
-                }
-            }
-        }
-    }
-
-    if (!removed) {
-        gitcpp::message("No reason to remove the file.");
-    }
-}
-
-void log() {
-    std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
-    fs::path head_path = Repository::HEADS / current_branch;
-    if (!fs::exists(head_path)) {
-        return; // No commits yet
-    }
-    std::string current_commit_hash = gitcpp::readContentsAsString(head_path);
-
-    while (!current_commit_hash.empty()) {
-        fs::path commit_path = Repository::COMMITS / current_commit_hash;
-        if (!fs::exists(commit_path)) {
-            std::cerr << "Error: Corrupt repository. Commit object not found: " << current_commit_hash << std::endl;
-            break;
-        }
-
-        std::string commit_contents = gitcpp::readContentsAsString(commit_path);
-        size_t nul_pos = commit_contents.find('\0');
-        if (nul_pos == std::string::npos) {
-            std::cerr << "Error: Corrupt repository. Malformed commit object: " << current_commit_hash << std::endl;
-            break;
-        }
-
-        std::string body = commit_contents.substr(nul_pos + 1);
-        std::istringstream body_stream(body);
-        std::string line;
-        std::string parent_hash = "";
-
-        std::cout << "===" << std::endl;
-        std::cout << "commit " << current_commit_hash << std::endl;
-
-        // Parse the commit body header
-        while(std::getline(body_stream, line) && !line.empty()) {
-            if (line.rfind("parent ", 0) == 0) {
-                parent_hash = line.substr(7);
-            }
-            // A real log would parse the date and format it nicely
-            if (line.rfind("author ", 0) == 0) {
-                std::cout << line << std::endl;
-            }
-        }
-
-        // The rest of the stream is the message
-        std::string message;
-        std::string temp_line;
-        while(std::getline(body_stream, temp_line)) {
-            message += "    " + temp_line + "\n";
-        }
-        std::cout << "\n" << message << std::endl;
-
-        current_commit_hash = parent_hash;
-    }
-}
-
-void globalLog() {
-    // Get all commit files from the commits directory
-    std::vector<std::string> all_commits = gitcpp::plainFilenamesIn(Repository::COMMITS);
     
-    if (all_commits.empty()) {
-        return;
-    }
-    
-    // Filter out invalid commit files (SHA-1 hashes should be 40 characters)
-    std::vector<std::string> valid_commits;
-    for (const std::string& commit_hash : all_commits) {
-        if (commit_hash.length() == 40) {
-            valid_commits.push_back(commit_hash);
-        }
-    }
-    
-    // Sort commits by filename (which are SHA-1 hashes) for consistent output
-    std::sort(valid_commits.begin(), valid_commits.end());
-    
-    for (const std::string& commit_hash : valid_commits) {
-        fs::path commit_path = Repository::COMMITS / commit_hash;
-        
-        if (!fs::exists(commit_path)) {
-            continue;
-        }
-        
-        std::string commit_contents = gitcpp::readContentsAsString(commit_path);
-        size_t nul_pos = commit_contents.find('\0');
-        if (nul_pos == std::string::npos) {
-            std::cerr << "Error: Corrupt repository. Malformed commit object: " << commit_hash << std::endl;
-            continue;
-        }
-        
-        std::string body = commit_contents.substr(nul_pos + 1);
-        std::istringstream body_stream(body);
-        std::string line;
-        
-        std::cout << "===" << std::endl;
-        std::cout << "commit " << commit_hash << std::endl;
-        
-        // Parse the commit body header
-        while(std::getline(body_stream, line) && !line.empty()) {
-            // A real log would parse the date and format it nicely
-            if (line.rfind("author ", 0) == 0) {
-                std::cout << line << std::endl;
-            }
-        }
-        
-        // The rest of the stream is the message
-        std::string message;
-        std::string temp_line;
-        while(std::getline(body_stream, temp_line)) {
-            message += "    " + temp_line + "\n";
-        }
-        std::cout << "\n" << message << std::endl;
-    }
-}
-
-void find(const std::string& message) {
-    // Get all commit files from the commits directory
-    std::vector<std::string> all_commits = gitcpp::plainFilenamesIn(Repository::COMMITS);
-    
-    if (all_commits.empty()) {
-        std::cout << "Found no commit with that message." << std::endl;
-        return;
-    }
-    
-    // Filter out invalid commit files (SHA-1 hashes should be 40 characters)
-    std::vector<std::string> valid_commits;
-    for (const std::string& commit_hash : all_commits) {
-        if (commit_hash.length() == 40) {
-            valid_commits.push_back(commit_hash);
-        }
-    }
-    
-    std::vector<std::string> matching_commits;
-    
-    for (const std::string& commit_hash : valid_commits) {
-        fs::path commit_path = Repository::COMMITS / commit_hash;
-        
-        if (!fs::exists(commit_path)) {
-            continue;
-        }
-        
-        std::string commit_contents = gitcpp::readContentsAsString(commit_path);
-        size_t nul_pos = commit_contents.find('\0');
-        if (nul_pos == std::string::npos) {
-            continue; // Skip malformed commits
-        }
-        
-        std::string body = commit_contents.substr(nul_pos + 1);
-        std::istringstream body_stream(body);
-        std::string line;
-        
-        // Skip header lines until we get to the message
-        while(std::getline(body_stream, line) && !line.empty()) {
-            // Skip header lines (tree, parent, author, etc.)
-        }
-        
-        // The rest of the stream is the message
-        std::string commit_message;
-        std::string temp_line;
-        while(std::getline(body_stream, temp_line)) {
-            if (!commit_message.empty()) {
-                commit_message += "\n";
-            }
-            commit_message += temp_line;
-        }
-        
-        // Check if the commit message matches
-        if (commit_message == message) {
-            matching_commits.push_back(commit_hash);
-        }
-    }
-    
-    if (matching_commits.empty()) {
-        std::cout << "Found no commit with that message." << std::endl;
-    } else {
-        // Sort for consistent output
-        std::sort(matching_commits.begin(), matching_commits.end());
-        for (const std::string& commit_hash : matching_commits) {
-            std::cout << commit_hash << std::endl;
-        }
-    }
-}
-
-void status() {
-    std::cout << "=== Branches ===" << std::endl;
-    std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
-    std::vector<std::string> branches = gitcpp::plainFilenamesIn(Repository::HEADS);
-    if (branches.empty() && !current_branch.empty()) {
-        branches.push_back(current_branch);
-    }
-    std::sort(branches.begin(), branches.end());
-
-    for (const auto& branch : branches) {
-        if (branch == current_branch) {
-            std::cout << "* " << branch << std::endl;
-        } else {
-            std::cout << "  " << branch << std::endl;
-        }
-    }
-    std::cout << std::endl;
-
-    std::cout << "=== Staged Files ===" << std::endl;
-    std::string staged_content = gitcpp::readContentsAsString(Repository::FILE_MAP);
-    if (staged_content != "{}") {
-        std::istringstream staged_stream(staged_content);
-        std::string line;
-        while (std::getline(staged_stream, line)) {
-            size_t colon_pos = line.find(':');
-            if (colon_pos != std::string::npos) {
-                std::cout << line.substr(0, colon_pos) << std::endl;
-            }
-        }
-    }
-    std::cout << std::endl;
-
-    std::cout << "=== Removed Files ===" << std::endl;
-    std::string removed_content = gitcpp::readContentsAsString(Repository::REMOVE_SET);
-    if (removed_content != "[]") {
-        std::istringstream removed_stream(removed_content);
-        std::string line;
-        while (std::getline(removed_stream, line)) {
-            std::cout << line << std::endl;
-        }
-    }
-    std::cout << std::endl;
-
-    std::cout << "=== Modifications Not Staged For Commit ===" << std::endl;
-    
-    // Get current commit's tree to compare against
-    std::map<std::string, std::string> current_commit_files;
-    fs::path head_path = Repository::HEADS / current_branch;
-    if (fs::exists(head_path)) {
-        std::string head_commit_hash = gitcpp::readContentsAsString(head_path);
-        fs::path commit_path = Repository::COMMITS / head_commit_hash;
-        if (fs::exists(commit_path)) {
-            std::string commit_contents = gitcpp::readContentsAsString(commit_path);
-            size_t nul_pos = commit_contents.find('\0');
-            if (nul_pos != std::string::npos) {
-                std::string body = commit_contents.substr(nul_pos + 1);
-                std::istringstream body_stream(body);
-                std::string line;
-                std::string tree_hash;
-                while (std::getline(body_stream, line)) {
-                    if (line.rfind("tree ", 0) == 0) {
-                        tree_hash = line.substr(5);
-                        break;
-                    }
-                }
-                
-                if (!tree_hash.empty() && fs::exists(Repository::BLOBS / tree_hash)) {
-                    std::string tree_contents = gitcpp::readContentsAsString(Repository::BLOBS / tree_hash);
-                    std::istringstream tree_stream(tree_contents);
-                    while (std::getline(tree_stream, line)) {
-                        size_t colon_pos = line.find(':');
-                        if (colon_pos != std::string::npos) {
-                            current_commit_files[line.substr(0, colon_pos)] = line.substr(colon_pos + 1);
+                    if (!tree_hash.empty()) {
+                        std::string tree_contents = gitcpp::readContentsAsString(Repository::BLOBS / tree_hash);
+                        if (tree_contents.find(fileToRemove) != std::string::npos) {
+                            // Stage for removal
+                            std::string removed_content = gitcpp::readContentsAsString(Repository::REMOVE_SET);
+                            if (removed_content == "[]") {
+                                removed_content = "";
+                            }
+                            if (removed_content.find(fileToRemove) == std::string::npos) {
+                                removed_content += fileToRemove + "\n";
+                                gitcpp::writeContents(Repository::REMOVE_SET, removed_content);
+                            }
+                            // Delete the file
+                            fs::remove(fileToRemove);
+                            removed = true;
                         }
                     }
                 }
             }
         }
-    }
     
-    // Get staged files
-    std::map<std::string, std::string> staged_files;
-    if (staged_content != "{}") {
-        std::istringstream staged_stream(staged_content);
-        std::string line;
-        while (std::getline(staged_stream, line)) {
-            size_t colon_pos = line.find(':');
-            if (colon_pos != std::string::npos) {
-                staged_files[line.substr(0, colon_pos)] = line.substr(colon_pos + 1);
-            }
+        if (!removed) {
+            gitcpp::message("No reason to remove the file.");
         }
     }
     
-    // Get removed files
-    std::set<std::string> removed_files;
-    if (removed_content != "[]") {
-        std::istringstream removed_stream(removed_content);
-        std::string line;
-        while (std::getline(removed_stream, line)) {
-            removed_files.insert(line);
-        }
-    }
-    
-    // Check for modifications and deletions
-    std::vector<std::string> modifications;
-    for (const auto& [file_path, blob_hash] : current_commit_files) {
-        if (staged_files.count(file_path) || removed_files.count(file_path)) {
-            // File is staged or staged for removal, skip checking working directory
-            continue;
-        }
-        
-        if (!fs::exists(file_path)) {
-            // File was deleted
-            modifications.push_back(file_path + " (deleted)");
-        } else {
-            // Check if file was modified
-            auto content_bytes = gitcpp::readContents(file_path);
-            std::string current_hash = gitcpp::sha1(content_bytes);
-            if (current_hash != blob_hash) {
-                modifications.push_back(file_path + " (modified)");
-            }
-        }
-    }
-    
-    std::sort(modifications.begin(), modifications.end());
-    for (const auto& mod : modifications) {
-        std::cout << mod << std::endl;
-    }
-    std::cout << std::endl;
-
-    std::cout << "=== Untracked Files ===" << std::endl;
-    
-    // Find untracked files (files in working directory not in commit or staging)
-    std::vector<std::string> untracked_files;
-    std::function<void(const fs::path&)> scan_directory = [&](const fs::path& dir) {
-        if (!fs::exists(dir) || !fs::is_directory(dir)) return;
-        
-        for (const auto& entry : fs::directory_iterator(dir)) {
-            std::string filename = entry.path().filename().string();
-            if (!filename.empty() && filename[0] == '.') continue; // Skip hidden files
-            
-            if (entry.is_directory()) {
-                scan_directory(entry.path());
-            } else if (entry.is_regular_file()) {
-                std::string relative_path = fs::relative(entry.path(), fs::current_path()).string();
-                
-                // Skip if file is in current commit or staged
-                if (!current_commit_files.count(relative_path) && !staged_files.count(relative_path)) {
-                    untracked_files.push_back(relative_path);
-                }
-            }
-        }
-    };
-    
-    scan_directory(".");
-    std::sort(untracked_files.begin(), untracked_files.end());
-    for (const auto& file : untracked_files) {
-        std::cout << file << std::endl;
-    }
-    std::cout << std::endl;
-}
-
-void restore(const std::vector<std::string>& argv) {
-    // Skip the "restore" command itself
-    std::vector<std::string> args;
-    for (size_t i = 1; i < argv.size(); ++i) {
-        args.push_back(argv[i]);
-    }
-    
-    if (args.empty()) {
-        std::cout << "Must specify a file to restore." << std::endl;
-        return;
-    }
-    
-    std::string commit_id;
-    std::string file_path;
-    
-    // Parse arguments
-    if (args.size() == 1) {
-        // restore <file> - restore from HEAD
-        file_path = args[0];
-        
-        // Get current branch's HEAD commit
+    void log() {
         std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
         fs::path head_path = Repository::HEADS / current_branch;
         if (!fs::exists(head_path)) {
-            std::cout << "No commits yet." << std::endl;
+            return; // No commits yet
+        }
+        std::string current_commit_hash = gitcpp::readContentsAsString(head_path);
+    
+        while (!current_commit_hash.empty()) {
+            fs::path commit_path = Repository::COMMITS / current_commit_hash;
+            if (!fs::exists(commit_path)) {
+                std::cerr << "Error: Corrupt repository. Commit object not found: " << current_commit_hash << std::endl;
+                break;
+            }
+    
+            std::string commit_contents = gitcpp::readContentsAsString(commit_path);
+            size_t nul_pos = commit_contents.find('\0');
+            if (nul_pos == std::string::npos) {
+                std::cerr << "Error: Corrupt repository. Malformed commit object: " << current_commit_hash << std::endl;
+                break;
+            }
+    
+            std::string body = commit_contents.substr(nul_pos + 1);
+            std::istringstream body_stream(body);
+            std::string line;
+            std::string parent_hash = "";
+    
+            std::cout << "===" << std::endl;
+            std::cout << "commit " << current_commit_hash << std::endl;
+    
+            // Parse the commit body header
+            while(std::getline(body_stream, line) && !line.empty()) {
+                if (line.rfind("parent ", 0) == 0) {
+                    parent_hash = line.substr(7);
+                }
+                // A real log would parse the date and format it nicely
+                if (line.rfind("author ", 0) == 0) {
+                    std::cout << line << std::endl;
+                }
+            }
+    
+            // The rest of the stream is the message
+            std::string message;
+            std::string temp_line;
+            while(std::getline(body_stream, temp_line)) {
+                message += "    " + temp_line + "\n";
+            }
+            std::cout << "\n" << message << std::endl;
+    
+            current_commit_hash = parent_hash;
+        }
+    }
+    
+    void globalLog() {
+        // Get all commit files from the commits directory
+        std::vector<std::string> all_commits = gitcpp::plainFilenamesIn(Repository::COMMITS);
+        
+        if (all_commits.empty()) {
             return;
         }
-        commit_id = gitcpp::readContentsAsString(head_path);
-    } else if (args.size() == 2 && args[0].rfind("--source=", 0) == 0) {
-        // restore --source=<commit> <file>
-        commit_id = args[0].substr(9); // Remove "--source=" prefix
-        file_path = args[1];
-    } else {
-        std::cout << "Invalid restore command format." << std::endl;
-        return;
-    }
-    
-    // Validate commit exists
-    fs::path commit_path = Repository::COMMITS / commit_id;
-    if (!fs::exists(commit_path)) {
-        std::cout << "No commit with that id exists." << std::endl;
-        return;
-    }
-    
-    // Read commit to get tree hash
-    std::string commit_contents = gitcpp::readContentsAsString(commit_path);
-    size_t nul_pos = commit_contents.find('\0');
-    if (nul_pos == std::string::npos) {
-        std::cout << "Corrupt commit object." << std::endl;
-        return;
-    }
-    
-    std::string body = commit_contents.substr(nul_pos + 1);
-    std::istringstream body_stream(body);
-    std::string line;
-    std::string tree_hash;
-    
-    while (std::getline(body_stream, line)) {
-        if (line.rfind("tree ", 0) == 0) {
-            tree_hash = line.substr(5);
-            break;
+        
+        // Filter out invalid commit files (SHA-1 hashes should be 40 characters)
+        std::vector<std::string> valid_commits;
+        for (const std::string& commit_hash : all_commits) {
+            if (commit_hash.length() == 40) {
+                valid_commits.push_back(commit_hash);
+            }
+        }
+        
+        // Sort commits by filename (which are SHA-1 hashes) for consistent output
+        std::sort(valid_commits.begin(), valid_commits.end());
+        
+        for (const std::string& commit_hash : valid_commits) {
+            fs::path commit_path = Repository::COMMITS / commit_hash;
+            
+            if (!fs::exists(commit_path)) {
+                continue;
+            }
+            
+            std::string commit_contents = gitcpp::readContentsAsString(commit_path);
+            size_t nul_pos = commit_contents.find('\0');
+            if (nul_pos == std::string::npos) {
+                std::cerr << "Error: Corrupt repository. Malformed commit object: " << commit_hash << std::endl;
+                continue;
+            }
+            
+            std::string body = commit_contents.substr(nul_pos + 1);
+            std::istringstream body_stream(body);
+            std::string line;
+            
+            std::cout << "===" << std::endl;
+            std::cout << "commit " << commit_hash << std::endl;
+            
+            // Parse the commit body header
+            while(std::getline(body_stream, line) && !line.empty()) {
+                // A real log would parse the date and format it nicely
+                if (line.rfind("author ", 0) == 0) {
+                    std::cout << line << std::endl;
+                }
+            }
+            
+            // The rest of the stream is the message
+            std::string message;
+            std::string temp_line;
+            while(std::getline(body_stream, temp_line)) {
+                message += "    " + temp_line + "\n";
+            }
+            std::cout << "\n" << message << std::endl;
         }
     }
     
-    if (tree_hash.empty()) {
-        std::cout << "Corrupt commit object - no tree found." << std::endl;
-        return;
+    void find(const std::string& message) {
+        // Get all commit files from the commits directory
+        std::vector<std::string> all_commits = gitcpp::plainFilenamesIn(Repository::COMMITS);
+        
+        if (all_commits.empty()) {
+            std::cout << "Found no commit with that message." << std::endl;
+            return;
+        }
+        
+        // Filter out invalid commit files (SHA-1 hashes should be 40 characters)
+        std::vector<std::string> valid_commits;
+        for (const std::string& commit_hash : all_commits) {
+            if (commit_hash.length() == 40) {
+                valid_commits.push_back(commit_hash);
+            }
+        }
+        
+        std::vector<std::string> matching_commits;
+        
+        for (const std::string& commit_hash : valid_commits) {
+            fs::path commit_path = Repository::COMMITS / commit_hash;
+            
+            if (!fs::exists(commit_path)) {
+                continue;
+            }
+            
+            std::string commit_contents = gitcpp::readContentsAsString(commit_path);
+            size_t nul_pos = commit_contents.find('\0');
+            if (nul_pos == std::string::npos) {
+                continue; // Skip malformed commits
+            }
+            
+            std::string body = commit_contents.substr(nul_pos + 1);
+            std::istringstream body_stream(body);
+            std::string line;
+            
+            // Skip header lines until we get to the message
+            while(std::getline(body_stream, line) && !line.empty()) {
+                // Skip header lines (tree, parent, author, etc.)
+            }
+            
+            // The rest of the stream is the message
+            std::string commit_message;
+            std::string temp_line;
+            while(std::getline(body_stream, temp_line)) {
+                if (!commit_message.empty()) {
+                    commit_message += "\n";
+                }
+                commit_message += temp_line;
+            }
+            
+            // Check if the commit message matches
+            if (commit_message == message) {
+                matching_commits.push_back(commit_hash);
+            }
+        }
+        
+        if (matching_commits.empty()) {
+            std::cout << "Found no commit with that message." << std::endl;
+        } else {
+            // Sort for consistent output
+            std::sort(matching_commits.begin(), matching_commits.end());
+            for (const std::string& commit_hash : matching_commits) {
+                std::cout << commit_hash << std::endl;
+            }
+        }
     }
     
-    // Read tree to find file
-    fs::path tree_path = Repository::BLOBS / tree_hash;
-    if (!fs::exists(tree_path)) {
-        std::cout << "Corrupt repository - tree object missing." << std::endl;
-        return;
+    void status() {
+        std::cout << "=== Branches ===" << std::endl;
+        std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
+        std::vector<std::string> branches = gitcpp::plainFilenamesIn(Repository::HEADS);
+        if (branches.empty() && !current_branch.empty()) {
+            branches.push_back(current_branch);
+        }
+        std::sort(branches.begin(), branches.end());
+    
+        for (const auto& branch : branches) {
+            if (branch == current_branch) {
+                std::cout << "* " << branch << std::endl;
+            } else {
+                std::cout << "  " << branch << std::endl;
+            }
+        }
+        std::cout << std::endl;
+    
+        std::cout << "=== Staged Files ===" << std::endl;
+        std::string staged_content = gitcpp::readContentsAsString(Repository::FILE_MAP);
+        if (staged_content != "{}") {
+            std::istringstream staged_stream(staged_content);
+            std::string line;
+            while (std::getline(staged_stream, line)) {
+                size_t colon_pos = line.find(':');
+                if (colon_pos != std::string::npos) {
+                    std::cout << line.substr(0, colon_pos) << std::endl;
+                }
+            }
+        }
+        std::cout << std::endl;
+    
+        std::cout << "=== Removed Files ===" << std::endl;
+        std::string removed_content = gitcpp::readContentsAsString(Repository::REMOVE_SET);
+        if (removed_content != "[]") {
+            std::istringstream removed_stream(removed_content);
+            std::string line;
+            while (std::getline(removed_stream, line)) {
+                std::cout << line << std::endl;
+            }
+        }
+        std::cout << std::endl;
+    
+        std::cout << "=== Modifications Not Staged For Commit ===" << std::endl;
+        
+        // Get current commit's tree to compare against
+        std::map<std::string, std::string> current_commit_files;
+        fs::path head_path = Repository::HEADS / current_branch;
+        if (fs::exists(head_path)) {
+            std::string head_commit_hash = gitcpp::readContentsAsString(head_path);
+            fs::path commit_path = Repository::COMMITS / head_commit_hash;
+            if (fs::exists(commit_path)) {
+                std::string commit_contents = gitcpp::readContentsAsString(commit_path);
+                size_t nul_pos = commit_contents.find('\0');
+                if (nul_pos != std::string::npos) {
+                    std::string body = commit_contents.substr(nul_pos + 1);
+                    std::istringstream body_stream(body);
+                    std::string line;
+                    std::string tree_hash;
+                    while (std::getline(body_stream, line)) {
+                        if (line.rfind("tree ", 0) == 0) {
+                            tree_hash = line.substr(5);
+                            break;
+                        }
+                    }
+                    
+                    if (!tree_hash.empty() && fs::exists(Repository::BLOBS / tree_hash)) {
+                        std::string tree_contents = gitcpp::readContentsAsString(Repository::BLOBS / tree_hash);
+                        std::istringstream tree_stream(tree_contents);
+                        while (std::getline(tree_stream, line)) {
+                            size_t colon_pos = line.find(':');
+                            if (colon_pos != std::string::npos) {
+                                current_commit_files[line.substr(0, colon_pos)] = line.substr(colon_pos + 1);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Get staged files
+        std::map<std::string, std::string> staged_files;
+        if (staged_content != "{}") {
+            std::istringstream staged_stream(staged_content);
+            std::string line;
+            while (std::getline(staged_stream, line)) {
+                size_t colon_pos = line.find(':');
+                if (colon_pos != std::string::npos) {
+                    staged_files[line.substr(0, colon_pos)] = line.substr(colon_pos + 1);
+                }
+            }
+        }
+        
+        // Get removed files
+        std::set<std::string> removed_files;
+        if (removed_content != "[]") {
+            std::istringstream removed_stream(removed_content);
+            std::string line;
+            while (std::getline(removed_stream, line)) {
+                removed_files.insert(line);
+            }
+        }
+        
+        // Check for modifications and deletions
+        std::vector<std::string> modifications;
+        for (const auto& [file_path, blob_hash] : current_commit_files) {
+            if (staged_files.count(file_path) || removed_files.count(file_path)) {
+                // File is staged or staged for removal, skip checking working directory
+                continue;
+            }
+            
+            if (!fs::exists(file_path)) {
+                // File was deleted
+                modifications.push_back(file_path + " (deleted)");
+            } else {
+                // Check if file was modified
+                auto content_bytes = gitcpp::readContents(file_path);
+                std::string current_hash = gitcpp::sha1(content_bytes);
+                if (current_hash != blob_hash) {
+                    modifications.push_back(file_path + " (modified)");
+                }
+            }
+        }
+        
+        std::sort(modifications.begin(), modifications.end());
+        for (const auto& mod : modifications) {
+            std::cout << mod << std::endl;
+        }
+        std::cout << std::endl;
+    
+        std::cout << "=== Untracked Files ===" << std::endl;
+        
+        // Find untracked files (files in working directory not in commit or staging)
+        std::vector<std::string> untracked_files;
+        std::function<void(const fs::path&)> scan_directory = [&](const fs::path& dir) {
+            if (!fs::exists(dir) || !fs::is_directory(dir)) return;
+            
+            for (const auto& entry : fs::directory_iterator(dir)) {
+                std::string filename = entry.path().filename().string();
+                if (!filename.empty() && filename[0] == '.') continue; // Skip hidden files
+                
+                if (entry.is_directory()) {
+                    scan_directory(entry.path());
+                } else if (entry.is_regular_file()) {
+                    std::string relative_path = fs::relative(entry.path(), fs::current_path()).string();
+                    
+                    // Skip if file is in current commit or staged
+                    if (!current_commit_files.count(relative_path) && !staged_files.count(relative_path)) {
+                        untracked_files.push_back(relative_path);
+                    }
+                }
+            }
+        };
+        
+        scan_directory(".");
+        std::sort(untracked_files.begin(), untracked_files.end());
+        for (const auto& file : untracked_files) {
+            std::cout << file << std::endl;
+        }
+        std::cout << std::endl;
     }
     
-    std::string tree_contents = gitcpp::readContentsAsString(tree_path);
-    std::istringstream tree_stream(tree_contents);
-    std::string blob_hash;
-    bool file_found = false;
-    
-    while (std::getline(tree_stream, line)) {
-        size_t colon_pos = line.find(':');
-        if (colon_pos != std::string::npos) {
-            std::string tree_file_path = line.substr(0, colon_pos);
-            if (tree_file_path == file_path) {
-                blob_hash = line.substr(colon_pos + 1);
-                file_found = true;
+    void restore(const std::vector<std::string>& argv) {
+        // Skip the "restore" command itself
+        std::vector<std::string> args;
+        for (size_t i = 1; i < argv.size(); ++i) {
+            args.push_back(argv[i]);
+        }
+        
+        if (args.empty()) {
+            std::cout << "Must specify a file to restore." << std::endl;
+            return;
+        }
+        
+        std::string commit_id;
+        std::string file_path;
+        
+        // Parse arguments
+        if (args.size() == 1) {
+            // restore <file> - restore from HEAD
+            file_path = args[0];
+            
+            // Get current branch's HEAD commit
+            std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
+            fs::path head_path = Repository::HEADS / current_branch;
+            if (!fs::exists(head_path)) {
+                std::cout << "No commits yet." << std::endl;
+                return;
+            }
+            commit_id = gitcpp::readContentsAsString(head_path);
+        } else if (args.size() == 2 && args[0].rfind("--source=", 0) == 0) {
+            // restore --source=<commit> <file>
+            commit_id = args[0].substr(9); // Remove "--source=" prefix
+            file_path = args[1];
+        } else {
+            std::cout << "Invalid restore command format." << std::endl;
+            return;
+        }
+        
+        // Validate commit exists
+        fs::path commit_path = Repository::COMMITS / commit_id;
+        if (!fs::exists(commit_path)) {
+            std::cout << "No commit with that id exists." << std::endl;
+            return;
+        }
+        
+        // Read commit to get tree hash
+        std::string commit_contents = gitcpp::readContentsAsString(commit_path);
+        size_t nul_pos = commit_contents.find('\0');
+        if (nul_pos == std::string::npos) {
+            std::cout << "Corrupt commit object." << std::endl;
+            return;
+        }
+        
+        std::string body = commit_contents.substr(nul_pos + 1);
+        std::istringstream body_stream(body);
+        std::string line;
+        std::string tree_hash;
+        
+        while (std::getline(body_stream, line)) {
+            if (line.rfind("tree ", 0) == 0) {
+                tree_hash = line.substr(5);
                 break;
             }
         }
-    }
-    
-    if (!file_found) {
-        std::cout << "File does not exist in that commit." << std::endl;
-        return;
-    }
-    
-    // Read blob and restore file
-    fs::path blob_path = Repository::BLOBS / blob_hash;
-    if (!fs::exists(blob_path)) {
-        std::cout << "Corrupt repository - blob object missing." << std::endl;
-        return;
-    }
-    
-    // Create parent directories if needed
-    fs::path file_fs_path(file_path);
-    if (file_fs_path.has_parent_path()) {
-        fs::create_directories(file_fs_path.parent_path());
-    }
-    
-    // Copy blob content to working directory
-    auto blob_contents = gitcpp::readContents(blob_path);
-    gitcpp::writeContents(file_fs_path, blob_contents);
-    
-    std::cout << "Restored " << file_path << " from commit " << commit_id << std::endl;
-}
-
-void branch(const std::string& name) {
-    // Create new branch
-    fs::path branch_path = Repository::HEADS / name;
-    if (fs::exists(branch_path)) {
-        gitcpp::message("A branch with that name already exists.");
-        return;
-    }
-
-    std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
-    fs::path head_path = Repository::HEADS / current_branch;
-    
-    // Check if current branch has any commits
-    if (!fs::exists(head_path)) {
-        gitcpp::message("Cannot create branch before initial commit.");
-        return;
-    }
-    
-    std::string head_commit_hash = gitcpp::readContentsAsString(head_path);
-    gitcpp::writeContents(branch_path, head_commit_hash);
-}
-
-void switchBranch(const std::string& name, const std::string& mode) {
-    fs::path branch_path = Repository::HEADS / name;
-    if (!fs::exists(branch_path)) {
-        gitcpp::message("A branch with that name does not exist.");
-        return;
-    }
-
-    // Check if we're already on this branch
-    std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
-    if (current_branch == name) {
-        gitcpp::message("Already on '" + name + "'");
-        return;
-    }
-
-    // Get the commit hash of the branch to switch to
-    std::string branch_commit_hash = gitcpp::readContentsAsString(branch_path);
-
-    // Get the tree hash from the commit
-    fs::path commit_path = Repository::COMMITS / branch_commit_hash;
-    std::string commit_contents = gitcpp::readContentsAsString(commit_path);
-    size_t nul_pos = commit_contents.find('\0');
-    std::string body = commit_contents.substr(nul_pos + 1);
-    std::istringstream body_stream(body);
-    std::string line;
-    std::string tree_hash;
-    while (std::getline(body_stream, line)) {
-        if (line.rfind("tree ", 0) == 0) {
-            tree_hash = line.substr(5);
-            break;
-        }
-    }
-
-    // Get the tree of the current branch
-    fs::path head_path = Repository::HEADS / current_branch;
-    std::string head_commit_hash = gitcpp::readContentsAsString(head_path);
-    fs::path current_commit_path = Repository::COMMITS / head_commit_hash;
-    std::string current_commit_contents = gitcpp::readContentsAsString(current_commit_path);
-    size_t current_nul_pos = current_commit_contents.find('\0');
-    std::string current_body = current_commit_contents.substr(current_nul_pos + 1);
-    std::istringstream current_body_stream(current_body);
-    std::string current_line;
-    std::string current_tree_hash;
-    while (std::getline(current_body_stream, current_line)) {
-        if (current_line.rfind("tree ", 0) == 0) {
-            current_tree_hash = current_line.substr(5);
-            break;
-        }
-    }
-
-    // Delete files that are tracked in the current branch
-    std::string current_tree_contents = gitcpp::readContentsAsString(Repository::BLOBS / current_tree_hash);
-    std::istringstream current_tree_stream(current_tree_contents);
-    while (std::getline(current_tree_stream, current_line)) {
-        size_t colon_pos = current_line.find(':');
-        if (colon_pos != std::string::npos) {
-            std::string file_path = current_line.substr(0, colon_pos);
-            fs::remove(file_path);
-        }
-    }
-
-    // Checkout the files from the new branch's tree
-    std::string tree_contents = gitcpp::readContentsAsString(Repository::BLOBS / tree_hash);
-    std::istringstream tree_stream(tree_contents);
-    while (std::getline(tree_stream, line)) {
-        size_t colon_pos = line.find(':');
-        if (colon_pos != std::string::npos) {
-            std::string file_path = line.substr(0, colon_pos);
-            std::string blob_hash = line.substr(colon_pos + 1);
-            std::string blob_contents = gitcpp::readContentsAsString(Repository::BLOBS / blob_hash);
-            
-            // Create parent directories if they don't exist
-            fs::path parent_dir = fs::path(file_path).parent_path();
-            if (!parent_dir.empty() && !fs::exists(parent_dir)) {
-                fs::create_directories(parent_dir);
-            }
-            
-            gitcpp::writeContents(file_path, blob_contents);
-        }
-    }
-
-    // Update the current branch
-    gitcpp::writeContents(Repository::CURRENT_BRANCH, name);
-}
-
-void rmBranch(const std::string& name) {
-    // Check if branch exists
-    fs::path branch_path = Repository::HEADS / name;
-    if (!fs::exists(branch_path)) {
-        std::cout << "A branch with that name does not exist." << std::endl;
-        return;
-    }
-    
-    // Check if trying to delete the current branch
-    std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
-    if (name == current_branch) {
-        std::cout << "Cannot remove the current branch." << std::endl;
-        return;
-    }
-    
-    // Remove the branch file
-    try {
-        fs::remove(branch_path);
-        std::cout << "Deleted branch " << name << "." << std::endl;
-    } catch (const fs::filesystem_error& e) {
-        std::cerr << "Error removing branch: " << e.what() << std::endl;
-    }
-}
-
-void reset(const std::string& commitId) {
-    // Validate commit exists
-    fs::path commit_path = Repository::COMMITS / commitId;
-    if (!fs::exists(commit_path)) {
-        std::cout << "No commit with that id exists." << std::endl;
-        return;
-    }
-    
-    // Read commit to get tree hash
-    std::string commit_contents = gitcpp::readContentsAsString(commit_path);
-    size_t nul_pos = commit_contents.find('\0');
-    if (nul_pos == std::string::npos) {
-        std::cout << "Corrupt commit object." << std::endl;
-        return;
-    }
-    
-    std::string body = commit_contents.substr(nul_pos + 1);
-    std::istringstream body_stream(body);
-    std::string line;
-    std::string tree_hash;
-    
-    while (std::getline(body_stream, line)) {
-        if (line.rfind("tree ", 0) == 0) {
-            tree_hash = line.substr(5);
-            break;
-        }
-    }
-    
-    if (tree_hash.empty()) {
-        std::cout << "Corrupt commit object - no tree found." << std::endl;
-        return;
-    }
-    
-    // Read tree to get all files in the commit
-    fs::path tree_path = Repository::BLOBS / tree_hash;
-    if (!fs::exists(tree_path)) {
-        std::cout << "Corrupt repository - tree object missing." << std::endl;
-        return;
-    }
-    
-    std::string tree_contents = gitcpp::readContentsAsString(tree_path);
-    std::istringstream tree_stream(tree_contents);
-    std::map<std::string, std::string> commit_files;
-    
-    while (std::getline(tree_stream, line)) {
-        size_t colon_pos = line.find(':');
-        if (colon_pos != std::string::npos) {
-            std::string file_path = line.substr(0, colon_pos);
-            std::string blob_hash = line.substr(colon_pos + 1);
-            commit_files[file_path] = blob_hash;
-        }
-    }
-    
-    // Get current working directory files to know what to remove
-    std::set<std::string> current_files;
-    std::function<void(const fs::path&)> scan_directory = [&](const fs::path& dir) {
-        if (!fs::exists(dir) || !fs::is_directory(dir)) return;
         
-        for (const auto& entry : fs::directory_iterator(dir)) {
-            std::string filename = entry.path().filename().string();
-            if (!filename.empty() && filename[0] == '.') continue; // Skip hidden files
-            
-            if (entry.is_directory()) {
-                scan_directory(entry.path());
-            } else if (entry.is_regular_file()) {
-                std::string relative_path = fs::relative(entry.path(), fs::current_path()).string();
-                current_files.insert(relative_path);
+        if (tree_hash.empty()) {
+            std::cout << "Corrupt commit object - no tree found." << std::endl;
+            return;
+        }
+        
+        // Read tree to find file
+        fs::path tree_path = Repository::BLOBS / tree_hash;
+        if (!fs::exists(tree_path)) {
+            std::cout << "Corrupt repository - tree object missing." << std::endl;
+            return;
+        }
+        
+        std::string tree_contents = gitcpp::readContentsAsString(tree_path);
+        std::istringstream tree_stream(tree_contents);
+        std::string blob_hash;
+        bool file_found = false;
+        
+        while (std::getline(tree_stream, line)) {
+            size_t colon_pos = line.find(':');
+            if (colon_pos != std::string::npos) {
+                std::string tree_file_path = line.substr(0, colon_pos);
+                if (tree_file_path == file_path) {
+                    blob_hash = line.substr(colon_pos + 1);
+                    file_found = true;
+                    break;
+                }
             }
         }
-    };
-    
-    scan_directory(".");
-    
-    // Remove files that are not in the target commit
-    for (const std::string& file_path : current_files) {
-        if (commit_files.find(file_path) == commit_files.end()) {
-            fs::remove(file_path);
+        
+        if (!file_found) {
+            std::cout << "File does not exist in that commit." << std::endl;
+            return;
         }
-    }
-    
-    // Restore all files from the commit
-    for (const auto& [file_path, blob_hash] : commit_files) {
+        
+        // Read blob and restore file
         fs::path blob_path = Repository::BLOBS / blob_hash;
         if (!fs::exists(blob_path)) {
-            std::cout << "Warning: blob object missing for " << file_path << std::endl;
-            continue;
+            std::cout << "Corrupt repository - blob object missing." << std::endl;
+            return;
         }
         
         // Create parent directories if needed
@@ -871,29 +641,259 @@ void reset(const std::string& commitId) {
         // Copy blob content to working directory
         auto blob_contents = gitcpp::readContents(blob_path);
         gitcpp::writeContents(file_fs_path, blob_contents);
+        
+        std::cout << "Restored " << file_path << " from commit " << commit_id << std::endl;
     }
     
-    // Update current branch to point to the new commit
-    std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
-    fs::path head_path = Repository::HEADS / current_branch;
-    gitcpp::writeContents(head_path, commitId);
+    void branch(const std::string& name) {
+        // Create new branch
+        fs::path branch_path = Repository::HEADS / name;
+        if (fs::exists(branch_path)) {
+            gitcpp::message("A branch with that name already exists.");
+            return;
+        }
     
-    // Clear staging area
-    gitcpp::writeContents(Repository::FILE_MAP, "{}");
-    gitcpp::writeContents(Repository::REMOVE_SET, "[]");
+        std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
+        fs::path head_path = Repository::HEADS / current_branch;
+        
+        // Check if current branch has any commits
+        if (!fs::exists(head_path)) {
+            gitcpp::message("Cannot create branch before initial commit.");
+            return;
+        }
+        
+        std::string head_commit_hash = gitcpp::readContentsAsString(head_path);
+        gitcpp::writeContents(branch_path, head_commit_hash);
+    }
     
-    std::cout << "Reset to commit " << commitId << std::endl;
-}
-
-void merge(const std::string& otherBranch) {
-    std::string msg = "merge " + otherBranch;
-    not_impl(msg.c_str());
-}
-
-// Utility placeholders
-bool isStageEmpty() { return true; }
-bool isFirstBranchCom() { return false; }
-std::string getHeadPath() { return ""; }
-std::string getCurrentBranch() { return "main"; }
-
+    void switchBranch(const std::string& name, const std::string& mode) {
+        fs::path branch_path = Repository::HEADS / name;
+        if (!fs::exists(branch_path)) {
+            gitcpp::message("A branch with that name does not exist.");
+            return;
+        }
+    
+        // Check if we're already on this branch
+        std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
+        if (current_branch == name) {
+            gitcpp::message("Already on '" + name + "'");
+            return;
+        }
+    
+        // Get the commit hash of the branch to switch to
+        std::string branch_commit_hash = gitcpp::readContentsAsString(branch_path);
+    
+        // Get the tree hash from the commit
+        fs::path commit_path = Repository::COMMITS / branch_commit_hash;
+        std::string commit_contents = gitcpp::readContentsAsString(commit_path);
+        size_t nul_pos = commit_contents.find('\0');
+        std::string body = commit_contents.substr(nul_pos + 1);
+        std::istringstream body_stream(body);
+        std::string line;
+        std::string tree_hash;
+        while (std::getline(body_stream, line)) {
+            if (line.rfind("tree ", 0) == 0) {
+                tree_hash = line.substr(5);
+                break;
+            }
+        }
+    
+        // Get the tree of the current branch
+        fs::path head_path = Repository::HEADS / current_branch;
+        std::string head_commit_hash = gitcpp::readContentsAsString(head_path);
+        fs::path current_commit_path = Repository::COMMITS / head_commit_hash;
+        std::string current_commit_contents = gitcpp::readContentsAsString(current_commit_path);
+        size_t current_nul_pos = current_commit_contents.find('\0');
+        std::string current_body = current_commit_contents.substr(current_nul_pos + 1);
+        std::istringstream current_body_stream(current_body);
+        std::string current_line;
+        std::string current_tree_hash;
+        while (std::getline(current_body_stream, current_line)) {
+            if (current_line.rfind("tree ", 0) == 0) {
+                current_tree_hash = current_line.substr(5);
+                break;
+            }
+        }
+    
+        // Delete files that are tracked in the current branch
+        std::string current_tree_contents = gitcpp::readContentsAsString(Repository::BLOBS / current_tree_hash);
+        std::istringstream current_tree_stream(current_tree_contents);
+        while (std::getline(current_tree_stream, current_line)) {
+            size_t colon_pos = current_line.find(':');
+            if (colon_pos != std::string::npos) {
+                std::string file_path = current_line.substr(0, colon_pos);
+                fs::remove(file_path);
+            }
+        }
+    
+        // Checkout the files from the new branch's tree
+        std::string tree_contents = gitcpp::readContentsAsString(Repository::BLOBS / tree_hash);
+        std::istringstream tree_stream(tree_contents);
+        while (std::getline(tree_stream, line)) {
+            size_t colon_pos = line.find(':');
+            if (colon_pos != std::string::npos) {
+                std::string file_path = line.substr(0, colon_pos);
+                std::string blob_hash = line.substr(colon_pos + 1);
+                std::string blob_contents = gitcpp::readContentsAsString(Repository::BLOBS / blob_hash);
+                
+                // Create parent directories if they don't exist
+                fs::path parent_dir = fs::path(file_path).parent_path();
+                if (!parent_dir.empty() && !fs::exists(parent_dir)) {
+                    fs::create_directories(parent_dir);
+                }
+                
+                gitcpp::writeContents(file_path, blob_contents);
+            }
+        }
+    
+        // Update the current branch
+        gitcpp::writeContents(Repository::CURRENT_BRANCH, name);
+    }
+    
+    void rmBranch(const std::string& name) {
+        // Check if branch exists
+        fs::path branch_path = Repository::HEADS / name;
+        if (!fs::exists(branch_path)) {
+            std::cout << "A branch with that name does not exist." << std::endl;
+            return;
+        }
+        
+        // Check if trying to delete the current branch
+        std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
+        if (name == current_branch) {
+            std::cout << "Cannot remove the current branch." << std::endl;
+            return;
+        }
+        
+        // Remove the branch file
+        try {
+            fs::remove(branch_path);
+            std::cout << "Deleted branch " << name << "." << std::endl;
+        } catch (const fs::filesystem_error& e) {
+            std::cerr << "Error removing branch: " << e.what() << std::endl;
+        }
+    }
+    
+    void reset(const std::string& commitId) {
+        // Validate commit exists
+        fs::path commit_path = Repository::COMMITS / commitId;
+        if (!fs::exists(commit_path)) {
+            std::cout << "No commit with that id exists." << std::endl;
+            return;
+        }
+        
+        // Read commit to get tree hash
+        std::string commit_contents = gitcpp::readContentsAsString(commit_path);
+        size_t nul_pos = commit_contents.find('\0');
+        if (nul_pos == std::string::npos) {
+            std::cout << "Corrupt commit object." << std::endl;
+            return;
+        }
+        
+        std::string body = commit_contents.substr(nul_pos + 1);
+        std::istringstream body_stream(body);
+        std::string line;
+        std::string tree_hash;
+        
+        while (std::getline(body_stream, line)) {
+            if (line.rfind("tree ", 0) == 0) {
+                tree_hash = line.substr(5);
+                break;
+            }
+        }
+        
+        if (tree_hash.empty()) {
+            std::cout << "Corrupt commit object - no tree found." << std::endl;
+            return;
+        }
+        
+        // Read tree to get all files in the commit
+        fs::path tree_path = Repository::BLOBS / tree_hash;
+        if (!fs::exists(tree_path)) {
+            std::cout << "Corrupt repository - tree object missing." << std::endl;
+            return;
+        }
+        
+        std::string tree_contents = gitcpp::readContentsAsString(tree_path);
+        std::istringstream tree_stream(tree_contents);
+        std::map<std::string, std::string> commit_files;
+        
+        while (std::getline(tree_stream, line)) {
+            size_t colon_pos = line.find(':');
+            if (colon_pos != std::string::npos) {
+                std::string file_path = line.substr(0, colon_pos);
+                std::string blob_hash = line.substr(colon_pos + 1);
+                commit_files[file_path] = blob_hash;
+            }
+        }
+        
+        // Get current working directory files to know what to remove
+        std::set<std::string> current_files;
+        std::function<void(const fs::path&)> scan_directory = [&](const fs::path& dir) {
+            if (!fs::exists(dir) || !fs::is_directory(dir)) return;
+            
+            for (const auto& entry : fs::directory_iterator(dir)) {
+                std::string filename = entry.path().filename().string();
+                if (!filename.empty() && filename[0] == '.') continue; // Skip hidden files
+                
+                if (entry.is_directory()) {
+                    scan_directory(entry.path());
+                } else if (entry.is_regular_file()) {
+                    std::string relative_path = fs::relative(entry.path(), fs::current_path()).string();
+                    current_files.insert(relative_path);
+                }
+            }
+        };
+        
+        scan_directory(".");
+        
+        // Remove files that are not in the target commit
+        for (const std::string& file_path : current_files) {
+            if (commit_files.find(file_path) == commit_files.end()) {
+                fs::remove(file_path);
+            }
+        }
+        
+        // Restore all files from the commit
+        for (const auto& [file_path, blob_hash] : commit_files) {
+            fs::path blob_path = Repository::BLOBS / blob_hash;
+            if (!fs::exists(blob_path)) {
+                std::cout << "Warning: blob object missing for " << file_path << std::endl;
+                continue;
+            }
+            
+            // Create parent directories if needed
+            fs::path file_fs_path(file_path);
+            if (file_fs_path.has_parent_path()) {
+                fs::create_directories(file_fs_path.parent_path());
+            }
+            
+            // Copy blob content to working directory
+            auto blob_contents = gitcpp::readContents(blob_path);
+            gitcpp::writeContents(file_fs_path, blob_contents);
+        }
+        
+        // Update current branch to point to the new commit
+        std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
+        fs::path head_path = Repository::HEADS / current_branch;
+        gitcpp::writeContents(head_path, commitId);
+        
+        // Clear staging area
+        gitcpp::writeContents(Repository::FILE_MAP, "{}");
+        gitcpp::writeContents(Repository::REMOVE_SET, "[]");
+        
+        std::cout << "Reset to commit " << commitId << std::endl;
+    }
+    
+    void merge(const std::string& otherBranch) {
+        std::string msg = "merge " + otherBranch;
+        not_impl(msg.c_str());
+    }
+    
+    // Utility placeholders
+    bool isStageEmpty() { return true; }
+    bool isFirstBranchCom() { return false; }
+    std::string getHeadPath() { return ""; }
+    std::string getCurrentBranch() { return "main"; }
+    
 } // namespace gitcpp::commands
