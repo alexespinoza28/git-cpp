@@ -638,8 +638,27 @@ void switchBranch(const std::string& name, const std::string& mode) {
 }
 
 void rmBranch(const std::string& name) {
-    std::string msg = "rm-branch " + name;
-    not_impl(msg.c_str());
+    // Check if branch exists
+    fs::path branch_path = Repository::HEADS / name;
+    if (!fs::exists(branch_path)) {
+        std::cout << "A branch with that name does not exist." << std::endl;
+        return;
+    }
+    
+    // Check if trying to delete the current branch
+    std::string current_branch = gitlet::readContentsAsString(Repository::CURRENT_BRANCH);
+    if (name == current_branch) {
+        std::cout << "Cannot remove the current branch." << std::endl;
+        return;
+    }
+    
+    // Remove the branch file
+    try {
+        fs::remove(branch_path);
+        std::cout << "Deleted branch " << name << "." << std::endl;
+    } catch (const fs::filesystem_error& e) {
+        std::cerr << "Error removing branch: " << e.what() << std::endl;
+    }
 }
 
 void reset(const std::string& commitId) {
