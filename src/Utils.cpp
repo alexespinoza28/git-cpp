@@ -102,7 +102,7 @@ namespace gitcpp {
         for (const auto& o : others) {
             p /= o;
         }
-        eturn p;
+        return p;
     }
 
     std::filesystem::path join(const std::filesystem::path& first, std::initializer_list<std::string> others) {
