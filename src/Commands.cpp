@@ -240,7 +240,61 @@ void log() {
 }
 
 void globalLog() {
-    not_impl("global-log");
+    // Get all commit files from the commits directory
+    std::vector<std::string> all_commits = gitlet::plainFilenamesIn(Repository::COMMITS);
+    
+    if (all_commits.empty()) {
+        return;
+    }
+    
+    // Filter out invalid commit files (SHA-1 hashes should be 40 characters)
+    std::vector<std::string> valid_commits;
+    for (const std::string& commit_hash : all_commits) {
+        if (commit_hash.length() == 40) {
+            valid_commits.push_back(commit_hash);
+        }
+    }
+    
+    // Sort commits by filename (which are SHA-1 hashes) for consistent output
+    std::sort(valid_commits.begin(), valid_commits.end());
+    
+    for (const std::string& commit_hash : valid_commits) {
+        fs::path commit_path = Repository::COMMITS / commit_hash;
+        
+        if (!fs::exists(commit_path)) {
+            continue;
+        }
+        
+        std::string commit_contents = gitlet::readContentsAsString(commit_path);
+        size_t nul_pos = commit_contents.find('\0');
+        if (nul_pos == std::string::npos) {
+            std::cerr << "Error: Corrupt repository. Malformed commit object: " << commit_hash << std::endl;
+            continue;
+        }
+        
+        std::string body = commit_contents.substr(nul_pos + 1);
+        std::istringstream body_stream(body);
+        std::string line;
+        
+        std::cout << "===" << std::endl;
+        std::cout << "commit " << commit_hash << std::endl;
+        
+        // Parse the commit body header
+        while(std::getline(body_stream, line) && !line.empty()) {
+            // A real log would parse the date and format it nicely
+            if (line.rfind("author ", 0) == 0) {
+                std::cout << line << std::endl;
+            }
+        }
+        
+        // The rest of the stream is the message
+        std::string message;
+        std::string temp_line;
+        while(std::getline(body_stream, temp_line)) {
+            message += "    " + temp_line + "\n";
+        }
+        std::cout << "\n" << message << std::endl;
+    }
 }
 
 void find(const std::string& message) {
