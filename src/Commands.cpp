@@ -526,8 +526,8 @@ namespace gitcpp::commands {
                 } else if (entry.is_regular_file()) {
                     std::string relative_path = fs::relative(entry.path(), fs::current_path()).string();
                     
-                    // Skip if file is in current commit or staged
-                    if (!current_commit_files.count(relative_path) && !staged_files.count(relative_path)) {
+                    // Skip if file is in current commit, staged, or ignored
+                    if (!current_commit_files.count(relative_path) && !staged_files.count(relative_path) && !isIgnored(relative_path)) {
                         untracked_files.push_back(relative_path);
                     }
                 }
@@ -1302,7 +1302,7 @@ namespace gitcpp::commands {
     
     std::vector<std::string> loadGitignorePatterns() {
         std::vector<std::string> patterns;
-        fs::path gitignore_path = ".gitignore";
+        fs::path gitignore_path = ".gitcppignore";
         
         if (fs::exists(gitignore_path)) {
             std::string content = gitcpp::readContentsAsString(gitignore_path);
@@ -1324,9 +1324,21 @@ namespace gitcpp::commands {
         static std::vector<std::string> patterns = loadGitignorePatterns();
         
         for (const auto& pattern : patterns) {
-            // Simple pattern matching - exact match or ends with pattern
-            if (filePath == pattern || filePath.find(pattern) != std::string::npos) {
-                return true;
+            // Handle wildcard patterns
+            if (pattern.find('*') != std::string::npos) {
+                // Simple wildcard matching for *.extension
+                if (pattern.front() == '*' && pattern.size() > 1) {
+                    std::string extension = pattern.substr(1);
+                    if (filePath.size() >= extension.size() && 
+                        filePath.substr(filePath.size() - extension.size()) == extension) {
+                        return true;
+                    }
+                }
+            } else {
+                // Exact match or directory match
+                if (filePath == pattern || filePath.find(pattern) == 0) {
+                    return true;
+                }
             }
         }
         
