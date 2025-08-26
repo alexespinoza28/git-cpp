@@ -10,6 +10,7 @@
     #include <algorithm>
     #include <map>
     #include <set>
+    #include <queue>
     
     namespace fs = std::filesystem;
     
@@ -20,6 +21,20 @@ namespace gitcpp::commands {
         std::cout << "[TODO] Command not implemented yet: " << name << "\n";
         std::exit(0);
     }
+    
+    // Forward declarations for merge helper functions
+    std::string findMergeBase(const std::string& commit1, const std::string& commit2);
+    std::set<std::string> getCommitAncestors(const std::string& commitHash);
+    void performFastForwardMerge(const std::string& targetCommit, const std::string& branchName);
+    void updateWorkingDirectory(const std::string& commitHash);
+    void performThreeWayMerge(const std::string& currentCommit, const std::string& otherCommit, 
+                             const std::string& baseCommit, const std::string& branchName);
+    std::map<std::string, std::string> getFilesFromCommit(const std::string& commitHash);
+    std::string mergeFile(const std::string& filePath, const std::string& currentHash, 
+                         const std::string& otherHash, const std::string& baseHash, bool& hasConflicts);
+    void createConflictFile(const std::string& filePath, const std::string& currentHash, const std::string& otherHash);
+    void createMergeCommit(const std::map<std::string, std::string>& files, 
+                          const std::string& parent1, const std::string& parent2, const std::string& branchName);
     
     void init() {
         // The constructor handles all the logic for init.
@@ -886,8 +901,48 @@ namespace gitcpp::commands {
     }
     
     void merge(const std::string& otherBranch) {
-        std::string msg = "merge " + otherBranch;
-        not_impl(msg.c_str());
+        // Check if other branch exists
+        fs::path other_branch_path = Repository::HEADS / otherBranch;
+        if (!fs::exists(other_branch_path)) {
+            gitcpp::message("A branch with that name does not exist.");
+            return;
+        }
+        
+        // Get current branch
+        std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
+        if (current_branch == otherBranch) {
+            gitcpp::message("Cannot merge a branch with itself.");
+            return;
+        }
+        
+        // Get commit hashes
+        fs::path current_head_path = Repository::HEADS / current_branch;
+        std::string current_commit = gitcpp::readContentsAsString(current_head_path);
+        std::string other_commit = gitcpp::readContentsAsString(other_branch_path);
+        
+        // Check if we're already up to date
+        if (current_commit == other_commit) {
+            gitcpp::message("Already up to date.");
+            return;
+        }
+        
+        // Find common ancestor (merge base)
+        std::string merge_base = findMergeBase(current_commit, other_commit);
+        
+        // Check for fast-forward merge
+        if (merge_base == current_commit) {
+            // Fast-forward merge: just update current branch to other commit
+            performFastForwardMerge(other_commit, otherBranch);
+            return;
+        }
+        
+        if (merge_base == other_commit) {
+            gitcpp::message("Already up to date.");
+            return;
+        }
+        
+        // Perform three-way merge
+        performThreeWayMerge(current_commit, other_commit, merge_base, otherBranch);
     }
     
     // Utility placeholders
@@ -895,5 +950,289 @@ namespace gitcpp::commands {
     bool isFirstBranchCom() { return false; }
     std::string getHeadPath() { return ""; }
     std::string getCurrentBranch() { return "main"; }
+    
+    // Helper function implementations for merge
+    
+    // Get all ancestors of a commit
+    std::set<std::string> getCommitAncestors(const std::string& commitHash) {
+        std::set<std::string> ancestors;
+        std::queue<std::string> toVisit;
+        
+        if (!commitHash.empty()) {
+            toVisit.push(commitHash);
+            ancestors.insert(commitHash);
+        }
+        
+        while (!toVisit.empty()) {
+            std::string current = toVisit.front();
+            toVisit.pop();
+            
+            fs::path commit_path = Repository::COMMITS / current;
+            if (!fs::exists(commit_path)) continue;
+            
+            std::string commit_contents = gitcpp::readContentsAsString(commit_path);
+            size_t nul_pos = commit_contents.find('\0');
+            if (nul_pos == std::string::npos) continue;
+            
+            // Parse commit to find parent
+            std::string metadata = commit_contents.substr(nul_pos + 1);
+            std::istringstream stream(metadata);
+            std::string line;
+            
+            while (std::getline(stream, line)) {
+                if (line.find("parent ") == 0) {
+                    std::string parent = line.substr(7); // Skip "parent "
+                    if (ancestors.find(parent) == ancestors.end()) {
+                        ancestors.insert(parent);
+                        toVisit.push(parent);
+                    }
+                }
+            }
+        }
+        
+        return ancestors;
+    }
+    
+    // Helper function to find merge base (common ancestor)
+    std::string findMergeBase(const std::string& commit1, const std::string& commit2) {
+        // Simple implementation: find first common ancestor
+        std::set<std::string> ancestors1 = getCommitAncestors(commit1);
+        std::set<std::string> ancestors2 = getCommitAncestors(commit2);
+        
+        // Find intersection
+        for (const auto& ancestor : ancestors1) {
+            if (ancestors2.count(ancestor)) {
+                return ancestor;
+            }
+        }
+        
+        return ""; // No common ancestor found
+    }
+    
+    // Update working directory to match a commit
+    void updateWorkingDirectory(const std::string& commitHash) {
+        fs::path commit_path = Repository::COMMITS / commitHash;
+        if (!fs::exists(commit_path)) return;
+        
+        std::string commit_contents = gitcpp::readContentsAsString(commit_path);
+        size_t nul_pos = commit_contents.find('\0');
+        if (nul_pos == std::string::npos) return;
+        
+        std::string tree_hash = commit_contents.substr(0, nul_pos);
+        if (tree_hash.empty()) return;
+        
+        fs::path tree_path = Repository::BLOBS / tree_hash;
+        if (!fs::exists(tree_path)) return;
+        
+        std::string tree_contents = gitcpp::readContentsAsString(tree_path);
+        std::istringstream tree_stream(tree_contents);
+        std::string line;
+        
+        // Clear current working directory of tracked files
+        // (In a real implementation, you'd be more careful about this)
+        
+        // Restore files from the commit
+        while (std::getline(tree_stream, line)) {
+            if (line.empty()) continue;
+            
+            size_t colon_pos = line.find(':');
+            if (colon_pos == std::string::npos) continue;
+            
+            std::string file_path = line.substr(0, colon_pos);
+            std::string blob_hash = line.substr(colon_pos + 1);
+            
+            fs::path blob_path = Repository::BLOBS / blob_hash;
+            if (fs::exists(blob_path)) {
+                auto blob_contents = gitcpp::readContents(blob_path);
+                gitcpp::writeContents(file_path, blob_contents);
+            }
+        }
+    }
+    
+    // Perform fast-forward merge
+    void performFastForwardMerge(const std::string& targetCommit, const std::string& branchName) {
+        std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
+        fs::path current_head_path = Repository::HEADS / current_branch;
+        
+        // Update current branch to point to target commit
+        gitcpp::writeContents(current_head_path, targetCommit);
+        
+        // Update working directory to match target commit
+        updateWorkingDirectory(targetCommit);
+        
+        std::cout << "Fast-forward merge completed. Merged branch '" << branchName << "' into '" << current_branch << "'." << std::endl;
+    }
+    
+    // Get files from a commit
+    std::map<std::string, std::string> getFilesFromCommit(const std::string& commitHash) {
+        std::map<std::string, std::string> files;
+        
+        if (commitHash.empty()) return files;
+        
+        fs::path commit_path = Repository::COMMITS / commitHash;
+        if (!fs::exists(commit_path)) return files;
+        
+        std::string commit_contents = gitcpp::readContentsAsString(commit_path);
+        size_t nul_pos = commit_contents.find('\0');
+        if (nul_pos == std::string::npos) return files;
+        
+        std::string tree_hash = commit_contents.substr(0, nul_pos);
+        if (tree_hash.empty()) return files;
+        
+        fs::path tree_path = Repository::BLOBS / tree_hash;
+        if (!fs::exists(tree_path)) return files;
+        
+        std::string tree_contents = gitcpp::readContentsAsString(tree_path);
+        std::istringstream tree_stream(tree_contents);
+        std::string line;
+        
+        while (std::getline(tree_stream, line)) {
+            if (line.empty()) continue;
+            
+            size_t colon_pos = line.find(':');
+            if (colon_pos == std::string::npos) continue;
+            
+            std::string file_path = line.substr(0, colon_pos);
+            std::string blob_hash = line.substr(colon_pos + 1);
+            files[file_path] = blob_hash;
+        }
+        
+        return files;
+    }
+    
+    // Create a file with conflict markers
+    void createConflictFile(const std::string& filePath, const std::string& currentHash, const std::string& otherHash) {
+        std::string currentContent = "";
+        std::string otherContent = "";
+        
+        if (!currentHash.empty()) {
+            fs::path current_blob = Repository::BLOBS / currentHash;
+            if (fs::exists(current_blob)) {
+                auto bytes = gitcpp::readContents(current_blob);
+                currentContent = std::string(bytes.begin(), bytes.end());
+            }
+        }
+        
+        if (!otherHash.empty()) {
+            fs::path other_blob = Repository::BLOBS / otherHash;
+            if (fs::exists(other_blob)) {
+                auto bytes = gitcpp::readContents(other_blob);
+                otherContent = std::string(bytes.begin(), bytes.end());
+            }
+        }
+        
+        std::string conflictContent = 
+            "<<<<<<< HEAD\n" +
+            currentContent +
+            "\n=======\n" +
+            otherContent +
+            "\n>>>>>>> " + filePath + "\n";
+        
+        gitcpp::writeContents(filePath, conflictContent);
+    }
+    
+    // Merge a single file (three-way merge logic)
+    std::string mergeFile(const std::string& filePath, const std::string& currentHash, 
+                         const std::string& otherHash, const std::string& baseHash, bool& hasConflicts) {
+        // Case 1: File unchanged in both branches
+        if (currentHash == otherHash) {
+            return currentHash;
+        }
+        
+        // Case 2: File only changed in current branch
+        if (otherHash == baseHash) {
+            return currentHash;
+        }
+        
+        // Case 3: File only changed in other branch
+        if (currentHash == baseHash) {
+            return otherHash;
+        }
+        
+        // Case 4: File changed in both branches - potential conflict
+        if (currentHash != otherHash && currentHash != baseHash && otherHash != baseHash) {
+            // For now, mark as conflict and use current version
+            // In a full implementation, you'd do line-by-line merging
+            std::cout << "CONFLICT (content): Merge conflict in " << filePath << std::endl;
+            std::cout << "Automatic merge failed; fix conflicts and then commit the result." << std::endl;
+            hasConflicts = true;
+            
+            // Create conflict markers in the file
+            createConflictFile(filePath, currentHash, otherHash);
+            return currentHash; // Return current version for now
+        }
+        
+        return currentHash;
+    }
+    
+    // Create merge commit
+    void createMergeCommit(const std::map<std::string, std::string>& files, 
+                          const std::string& parent1, const std::string& parent2, const std::string& branchName) {
+        // Create tree content
+        std::ostringstream tree_content;
+        for (const auto& [path, hash] : files) {
+            tree_content << path << ":" << hash << "\n";
+        }
+        
+        std::string tree_content_str = tree_content.str();
+        std::string tree_hash = gitcpp::sha1(tree_content_str);
+        gitcpp::writeContents(Repository::BLOBS / tree_hash, tree_content_str);
+        
+        // Create merge commit with two parents
+        std::vector<std::string> parents = {parent1, parent2};
+        std::string message = "Merge branch '" + branchName + "'";
+        
+        Commit merge_commit(tree_hash, parents, message);
+        gitcpp::writeContents(Repository::COMMITS / merge_commit.getCommitHash(), merge_commit.getCommitContents());
+        
+        // Update current branch
+        std::string current_branch = gitcpp::readContentsAsString(Repository::CURRENT_BRANCH);
+        fs::path current_head_path = Repository::HEADS / current_branch;
+        gitcpp::writeContents(current_head_path, merge_commit.getCommitHash());
+        
+        // Clear staging area
+        gitcpp::writeContents(Repository::FILE_MAP, "{}");
+        gitcpp::writeContents(Repository::REMOVE_SET, "[]");
+        
+        std::cout << "Merge completed successfully." << std::endl;
+    }
+    
+    // Perform three-way merge
+    void performThreeWayMerge(const std::string& currentCommit, const std::string& otherCommit, 
+                             const std::string& baseCommit, const std::string& branchName) {
+        // Get file lists from all three commits
+        auto currentFiles = getFilesFromCommit(currentCommit);
+        auto otherFiles = getFilesFromCommit(otherCommit);
+        auto baseFiles = getFilesFromCommit(baseCommit);
+        
+        // Collect all unique file paths
+        std::set<std::string> allFiles;
+        for (const auto& [path, hash] : currentFiles) allFiles.insert(path);
+        for (const auto& [path, hash] : otherFiles) allFiles.insert(path);
+        for (const auto& [path, hash] : baseFiles) allFiles.insert(path);
+        
+        bool hasConflicts = false;
+        std::map<std::string, std::string> mergedFiles;
+        
+        for (const std::string& filePath : allFiles) {
+            std::string currentHash = currentFiles.count(filePath) ? currentFiles[filePath] : "";
+            std::string otherHash = otherFiles.count(filePath) ? otherFiles[filePath] : "";
+            std::string baseHash = baseFiles.count(filePath) ? baseFiles[filePath] : "";
+            
+            // Determine merge result for this file
+            std::string resultHash = mergeFile(filePath, currentHash, otherHash, baseHash, hasConflicts);
+            if (!resultHash.empty()) {
+                mergedFiles[filePath] = resultHash;
+            }
+        }
+        
+        if (hasConflicts) {
+            gitcpp::message("Automatic merge failed; fix conflicts and then commit the result.");
+            return;
+        }
+        
+        // Create merge commit
+        createMergeCommit(mergedFiles, currentCommit, otherCommit, branchName);
+    }
     
 } // namespace gitcpp::commands
