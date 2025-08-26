@@ -995,17 +995,24 @@ namespace gitcpp::commands {
     
     // Helper function to find merge base (common ancestor)
     std::string findMergeBase(const std::string& commit1, const std::string& commit2) {
+        std::cout << "DEBUG: Finding merge base between " << commit1 << " and " << commit2 << std::endl;
+        
         // Simple implementation: find first common ancestor
         std::set<std::string> ancestors1 = getCommitAncestors(commit1);
         std::set<std::string> ancestors2 = getCommitAncestors(commit2);
         
+        std::cout << "DEBUG: Ancestors1 count: " << ancestors1.size() << std::endl;
+        std::cout << "DEBUG: Ancestors2 count: " << ancestors2.size() << std::endl;
+        
         // Find intersection
         for (const auto& ancestor : ancestors1) {
             if (ancestors2.count(ancestor)) {
+                std::cout << "DEBUG: Found merge base: " << ancestor << std::endl;
                 return ancestor;
             }
         }
         
+        std::cout << "DEBUG: No merge base found" << std::endl;
         return ""; // No common ancestor found
     }
     
@@ -1067,24 +1074,55 @@ namespace gitcpp::commands {
     std::map<std::string, std::string> getFilesFromCommit(const std::string& commitHash) {
         std::map<std::string, std::string> files;
         
-        if (commitHash.empty()) return files;
+        if (commitHash.empty()) {
+            std::cout << "DEBUG: Empty commit hash" << std::endl;
+            return files;
+        }
         
         fs::path commit_path = Repository::COMMITS / commitHash;
-        if (!fs::exists(commit_path)) return files;
+        if (!fs::exists(commit_path)) {
+            std::cout << "DEBUG: Commit file doesn't exist: " << commit_path << std::endl;
+            return files;
+        }
         
         std::string commit_contents = gitcpp::readContentsAsString(commit_path);
         size_t nul_pos = commit_contents.find('\0');
-        if (nul_pos == std::string::npos) return files;
+        if (nul_pos == std::string::npos) {
+            std::cout << "DEBUG: No null separator found in commit" << std::endl;
+            return files;
+        }
         
-        std::string tree_hash = commit_contents.substr(0, nul_pos);
-        if (tree_hash.empty()) return files;
+        // The tree hash is stored in the commit metadata, not at the beginning
+        std::string metadata = commit_contents.substr(nul_pos + 1);
+        std::istringstream metadata_stream(metadata);
+        std::string line;
+        std::string tree_hash;
+        
+        // Find the tree line in the metadata
+        while (std::getline(metadata_stream, line)) {
+            if (line.rfind("tree ", 0) == 0) {
+                tree_hash = line.substr(5); // Skip "tree "
+                break;
+            }
+        }
+        
+        if (tree_hash.empty()) {
+            std::cout << "DEBUG: No tree found in commit metadata" << std::endl;
+            return files;
+        }
+        
+        std::cout << "DEBUG: Found tree hash in metadata: " << tree_hash << std::endl;
         
         fs::path tree_path = Repository::BLOBS / tree_hash;
-        if (!fs::exists(tree_path)) return files;
+        if (!fs::exists(tree_path)) {
+            std::cout << "DEBUG: Tree file doesn't exist: " << tree_path << std::endl;
+            return files;
+        }
         
         std::string tree_contents = gitcpp::readContentsAsString(tree_path);
+        std::cout << "DEBUG: Tree contents: " << tree_contents << std::endl;
+        
         std::istringstream tree_stream(tree_contents);
-        std::string line;
         
         while (std::getline(tree_stream, line)) {
             if (line.empty()) continue;
@@ -1095,6 +1133,7 @@ namespace gitcpp::commands {
             std::string file_path = line.substr(0, colon_pos);
             std::string blob_hash = line.substr(colon_pos + 1);
             files[file_path] = blob_hash;
+            std::cout << "DEBUG: Found file: " << file_path << " -> " << blob_hash << std::endl;
         }
         
         return files;
@@ -1200,10 +1239,19 @@ namespace gitcpp::commands {
     // Perform three-way merge
     void performThreeWayMerge(const std::string& currentCommit, const std::string& otherCommit, 
                              const std::string& baseCommit, const std::string& branchName) {
+        std::cout << "DEBUG: Performing three-way merge" << std::endl;
+        std::cout << "DEBUG: Current commit: " << currentCommit << std::endl;
+        std::cout << "DEBUG: Other commit: " << otherCommit << std::endl;
+        std::cout << "DEBUG: Base commit: " << baseCommit << std::endl;
+        
         // Get file lists from all three commits
         auto currentFiles = getFilesFromCommit(currentCommit);
         auto otherFiles = getFilesFromCommit(otherCommit);
         auto baseFiles = getFilesFromCommit(baseCommit);
+        
+        std::cout << "DEBUG: Current files count: " << currentFiles.size() << std::endl;
+        std::cout << "DEBUG: Other files count: " << otherFiles.size() << std::endl;
+        std::cout << "DEBUG: Base files count: " << baseFiles.size() << std::endl;
         
         // Collect all unique file paths
         std::set<std::string> allFiles;
@@ -1218,6 +1266,11 @@ namespace gitcpp::commands {
             std::string currentHash = currentFiles.count(filePath) ? currentFiles[filePath] : "";
             std::string otherHash = otherFiles.count(filePath) ? otherFiles[filePath] : "";
             std::string baseHash = baseFiles.count(filePath) ? baseFiles[filePath] : "";
+            
+            std::cout << "DEBUG: File: " << filePath << std::endl;
+            std::cout << "DEBUG:   Current hash: " << currentHash << std::endl;
+            std::cout << "DEBUG:   Other hash: " << otherHash << std::endl;
+            std::cout << "DEBUG:   Base hash: " << baseHash << std::endl;
             
             // Determine merge result for this file
             std::string resultHash = mergeFile(filePath, currentHash, otherHash, baseHash, hasConflicts);
