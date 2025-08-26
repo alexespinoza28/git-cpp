@@ -2,6 +2,12 @@
 
 A C++ implementation of Git's core functionality, originally ported from a Java "gitlet" project. This is a fully functional version control system that handles repositories, commits, branches, merging, and more.
 
+## Platform Support
+
+Currently tested and working on **macOS**. Windows and Linux support coming soon.
+
+**TODO:** Add Windows and Linux compatibility
+
 ## Building
 
 ```bash
