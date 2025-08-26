@@ -1288,4 +1288,49 @@ namespace gitcpp::commands {
         createMergeCommit(mergedFiles, currentCommit, otherCommit, branchName);
     }
     
+    void config(const std::string& key, const std::string& value) {
+        // Create config directory if it doesn't exist
+        fs::path config_dir = Repository::GITCPP_DIR / "config";
+        if (!fs::exists(config_dir)) {
+            fs::create_directories(config_dir);
+        }
+        
+        // Write config value to file
+        fs::path config_file = config_dir / key;
+        gitcpp::writeContents(config_file, value);
+    }
+    
+    std::vector<std::string> loadGitignorePatterns() {
+        std::vector<std::string> patterns;
+        fs::path gitignore_path = ".gitignore";
+        
+        if (fs::exists(gitignore_path)) {
+            std::string content = gitcpp::readContentsAsString(gitignore_path);
+            std::istringstream stream(content);
+            std::string line;
+            
+            while (std::getline(stream, line)) {
+                // Skip empty lines and comments
+                if (!line.empty() && line[0] != '#') {
+                    patterns.push_back(line);
+                }
+            }
+        }
+        
+        return patterns;
+    }
+    
+    bool isIgnored(const std::string& filePath) {
+        static std::vector<std::string> patterns = loadGitignorePatterns();
+        
+        for (const auto& pattern : patterns) {
+            // Simple pattern matching - exact match or ends with pattern
+            if (filePath == pattern || filePath.find(pattern) != std::string::npos) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
 } // namespace gitcpp::commands

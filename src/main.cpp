@@ -18,6 +18,7 @@ using gitcpp::commands::switchBranch;
 using gitcpp::commands::rmBranch;
 using gitcpp::commands::reset;
 using gitcpp::commands::merge;
+using gitcpp::commands::config;
 
 static void exitError(const std::string& msg) {
     std::cout << msg << "\n";
@@ -92,6 +93,10 @@ int main(int argc, char** argv) {
     } else if (firstArg == "merge") {
         if (args.size() < 1) exitError("Missing branch name.");
         merge(args[0]);
+
+    } else if (firstArg == "config") {
+        if (args.size() < 2) exitError("Missing config key and value.");
+        config(args[0], args[1]);
 
     } else {
         exitError("No command with that name exists.");

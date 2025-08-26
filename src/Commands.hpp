@@ -21,7 +21,12 @@ namespace gitcpp::commands {
     void rmBranch(const std::string& name);
     void reset(const std::string& commitId);                     // switchBranch(commitId, "commit")
     void merge(const std::string& otherBranch);
+    void config(const std::string& key, const std::string& value);
 
+
+    // Helper functions for .gitignore support
+    bool isIgnored(const std::string& filePath);
+    std::vector<std::string> loadGitignorePatterns();
 
     bool isStageEmpty();
     bool isFirstBranchCom();
