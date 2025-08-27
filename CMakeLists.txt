@@ -17,4 +17,10 @@ target_include_directories(gitcpp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # On Apple, CommonCrypto is part of the system libraries and should be found.
 # No special linking is usually required.
 
+# Enable testing
+enable_testing()
+
+# Add tests subdirectory
+add_subdirectory(tests)
+
 

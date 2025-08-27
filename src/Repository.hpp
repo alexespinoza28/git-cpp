@@ -10,24 +10,27 @@ namespace gitcpp {
 
     class Repository {
     public:
-        inline static const fs::path CWD            = fs::current_path();
-        inline static const fs::path GITCPP_DIR     = CWD / ".gitcpp";
-        inline static const fs::path COMMITS        = GITCPP_DIR / "commits";
-        inline static const fs::path STAGED_FILES   = GITCPP_DIR / "staged_files";
-        inline static const fs::path BLOBS          = GITCPP_DIR / "blob_files";
-        inline static const fs::path FILE_MAP       = STAGED_FILES / "file_map";
-        inline static const fs::path REMOVE_SET     = STAGED_FILES / "remove_set";
-        inline static const fs::path BLOB_COUNT     = BLOBS / "blob_count";
-        inline static const fs::path HEADS          = GITCPP_DIR / "heads";
-        inline static const fs::path FILE_TO_BLOB_MAP = STAGED_FILES / "blob_map";
-        inline static const fs::path MAIN_COMMIT    = COMMITS / "main";
-        inline static const fs::path BRANCHES       = GITCPP_DIR / "branches";
-        inline static const fs::path BRANCH_SET     = BRANCHES / "branch_set";
-        inline static const fs::path FIRST_BRANCH_COM = BRANCHES / "first_branch_com";
-        inline static const fs::path CURRENT_BRANCH = BRANCHES / "current_branch";
+        fs::path CWD;
+        fs::path GITCPP_DIR;
+        fs::path COMMITS;
+        fs::path STAGED_FILES;
+        fs::path BLOBS;
+        fs::path FILE_MAP;
+        fs::path REMOVE_SET;
+        fs::path BLOB_COUNT;
+        fs::path HEADS;
+        fs::path FILE_TO_BLOB_MAP;
+        fs::path MAIN_COMMIT;
+        fs::path BRANCHES;
+        fs::path BRANCH_SET;
+        fs::path FIRST_BRANCH_COM;
+        fs::path CURRENT_BRANCH;
 
         // Constructor = "gitcpp init"
         Repository();
+        
+        // Constructor with force flag for testing
+        Repository(bool force_init);
 
     private:
         static void ensure_dir(const fs::path& p);

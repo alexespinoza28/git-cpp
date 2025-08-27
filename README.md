@@ -121,3 +121,73 @@ gitcpp stores all data in a `.gitcpp/` directory:
 - `heads/` - Branch pointers
 - `staged_files/` - Staging area
 - `config/` - Configuration files
+
+## Quick Demo
+
+Try this 5-minute walkthrough to see gitcpp in action:
+
+```bash
+# Build the project
+cmake -B build && make -C build
+
+# Create a test directory
+mkdir gitcpp_demo && cd gitcpp_demo
+
+# Initialize repository
+../build/gitcpp init
+
+# Set up user info
+../build/gitcpp config user.name "Demo User"
+../build/gitcpp config user.email "demo@example.com"
+
+# Create and add a file
+echo "Hello gitcpp!" > hello.txt
+../build/gitcpp add hello.txt
+../build/gitcpp commit "Initial commit"
+
+# Create a branch and make changes
+../build/gitcpp branch feature
+../build/gitcpp switch feature
+echo "Feature branch changes" >> hello.txt
+../build/gitcpp add hello.txt
+../build/gitcpp commit "Add feature"
+
+# Switch back and merge
+../build/gitcpp switch main
+../build/gitcpp merge feature
+
+# Check the result
+../build/gitcpp log
+cat hello.txt
+```
+
+Expected output: You should see both commits in the log and the merged content in `hello.txt`.
+
+### Test .gitcppignore
+
+```bash
+# Create files to ignore
+echo "debug info" > debug.log
+mkdir temp && echo "temp file" > temp/cache.txt
+
+# Create ignore file
+echo "*.log" > .gitcppignore
+echo "temp/" >> .gitcppignore
+
+# Check status - ignored files won't show up
+../build/gitcpp status
+```
+
+## Testing
+
+The project includes Google Test-based unit tests to verify functionality:
+
+```bash
+# Build tests (included in main build)
+cmake -B build && make -C build
+
+# Run tests (work in progress - some tests need isolation fixes)
+./build/tests/gitcpp_tests
+```
+
+**Note:** Test suite is currently being refined to properly isolate test environments.
